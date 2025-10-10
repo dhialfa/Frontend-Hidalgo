@@ -69,9 +69,10 @@ export default function UsersTable() {
   };
 
   /* ----- Editar ----- */
-  const onEditSubmit = async (values: UserFormValues) => {
-    if (!selected) return;
-    const res = await updateUser(selected.id, values);
+  const onEditSubmit = async (values: UserFormValues, id?: number | string) => {
+    const targetId = id ?? selected?.id;
+    if (targetId == null) return;
+    const res = await updateUser(targetId, values);
     const updated = res.data as User;
     setData((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
   };

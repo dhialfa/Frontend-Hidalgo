@@ -38,26 +38,39 @@ export interface CreateUserDTO {
 export type UpdateUserDTO = Partial<CreateUserDTO>;
 
 const UserApi: AxiosInstance = axios.create({
-  // OJO: barra final para evitar 301/404 en DRF
-  baseURL: `${URL}/api/users`,
+  // IMPORTANTE: barra final para DRF y para que `${id}/` quede bien.
+  baseURL: `${URL}/api/users/`,
+  // opcional:
+  // timeout: 10000,
 });
 
+// Helpers
+const ensureId = (id: number | string) => {
+  if (id === null || id === undefined || id === "") {
+    throw new Error("El id de usuario es requerido.");
+  }
+  return id;
+};
+
 // GET /api/users/
-export const getAllUsers = () =>
-  UserApi.get<User[]>("/");
+export const getAllUsers = () => UserApi.get<User[]>("");
 
 // GET /api/users/:id/
 export const getUser = (id: number | string) =>
-  UserApi.get<User>(`${id}/`);
+  UserApi.get<User>(`${ensureId(id)}/`);
 
 // POST /api/users/
 export const createUser = (user: CreateUserDTO) =>
-  UserApi.post<User>("/", user);
+  UserApi.post<User>("", user);
 
-// PUT /api/users/:id/
+// PATCH /api/users/:id/  (edición parcial recomendada)
 export const updateUser = (id: number | string, user: UpdateUserDTO) =>
-  UserApi.put<User>(`${id}/`, user);
+  UserApi.patch<User>(`${ensureId(id)}/`, user);
+
+// PUT /api/users/:id/  (reemplazo completo, si lo necesitas)
+export const replaceUser = (id: number | string, user: CreateUserDTO) =>
+  UserApi.put<User>(`${ensureId(id)}/`, user);
 
 // DELETE /api/users/:id/
 export const deleteUser = (id: number | string) =>
-  UserApi.delete<void>(`${id}/`);
+  UserApi.delete<void>(`${ensureId(id)}/`);

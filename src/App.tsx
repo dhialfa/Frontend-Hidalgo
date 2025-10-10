@@ -15,6 +15,7 @@ import FormElements from "./pages/Forms/FormElements";
 import CustomerTable from "./pages/Customers/CustomerTable";
 import UserPage from "./pages/Users/UserTable";
 import Blank from "./pages/Blank";
+import PlanPage from "./pages/Plans/PlanPage"
 import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
@@ -34,6 +35,7 @@ export default function App() {
             <Route path="/users" element={<UserPage />} />
             <Route path="/calendar" element={<Calendar />} />
             <Route path="/customers" element={<CustomerTable />} />
+            <Route path="/plans" element={<PlanPage/>} />
             <Route path="/blank" element={<Blank />} />
 
             {/* Forms */}

@@ -15,10 +15,8 @@ export type UserFormValues = {
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  /** Si hay valores iniciales -> modo editar; si no -> crear */
-  initial?: Partial<UserFormValues>;
-  /** El padre define qué hacer con los datos (create/update) */
-  onSubmit: (values: UserFormValues) => Promise<void>;
+  initial?: Partial<UserFormValues> & { id?: number | string };
+  onSubmit: (values: UserFormValues, id?: number | string) => Promise<void>;   
   title?: string;
   submitLabel?: string;
 };
@@ -31,7 +29,8 @@ export default function UserModal({
   title = "Añadir usuario",
   submitLabel = "Guardar usuario",
 }: Props) {
-  const isEdit = Boolean(initial);
+  // CHANGE: basar edición en que exista id
+  const isEdit = initial?.id != null;
 
   const [saving, setSaving] = useState(false);
 
@@ -44,6 +43,8 @@ export default function UserModal({
   const [rol, setRol] = useState("");
 
   const [isActive, setIsActive] = useState(true);
+
+  const [showPassword, setShowPassword] = useState(false);
 
   // password handling
   const [changePassword, setChangePassword] = useState(!isEdit); // en create, true por defecto
@@ -63,6 +64,9 @@ export default function UserModal({
 
     setIsActive(initial?.is_active ?? true);
 
+    // CHANGE: resetear ojo y flags al abrir
+    setShowPassword(false);
+
     if (isEdit) {
       setChangePassword(false); // en editar, por defecto no cambiar
       setPassword("");
@@ -80,6 +84,10 @@ export default function UserModal({
     if (!username.trim()) return alert("El username es obligatorio");
     if (!email.trim()) return alert("El email es obligatorio");
     if (!isEdit && !password.trim()) return alert("La contraseña es obligatoria");
+    // CHANGE: si en edición marcó cambiar contraseña pero está vacía
+    if (isEdit && changePassword && !password.trim()) {
+      return alert("Escribe la nueva contraseña o desmarca 'Cambiar contraseña'.");
+    }
 
     const payload: UserFormValues = {
       username: username.trim(),
@@ -95,7 +103,8 @@ export default function UserModal({
 
     try {
       setSaving(true);
-      await onSubmit(payload);
+      // CHANGE: pasar el id cuando es edición
+      await onSubmit(payload, isEdit ? initial!.id : undefined);
       handleClose();
     } catch (err: any) {
       const msg =
@@ -195,7 +204,7 @@ export default function UserModal({
             />
           </div>
 
-          {/* Rol (texto simple; puedes cambiar a <select> si tienes catálogo) */}
+          {/* Rol */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
               Rol
@@ -238,27 +247,50 @@ export default function UserModal({
                   />
                   Cambiar contraseña
                 </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={!changePassword}
-                  className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
-                  placeholder="••••••••"
-                />
+
+                {/* Input con botón Mostrar/Ocultar */}
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={!changePassword}
+                    className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 pr-16 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
+                    placeholder="••••••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={!changePassword}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-600 hover:text-brand-500 dark:text-gray-300 disabled:opacity-40"
+                  >
+                    {showPassword ? "Ocultar" : "Mostrar"}
+                  </button>
+                </div>
               </div>
             ) : (
               <>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
                   Contraseña *
                 </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
-                  placeholder="••••••••"
-                />
+
+                {/* Input con botón Mostrar/Ocultar */}
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 pr-16 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
+                    placeholder="••••••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-600 hover:text-brand-500 dark:text-gray-300"
+                  >
+                    {showPassword ? "Ocultar" : "Mostrar"}
+                  </button>
+                </div>
               </>
             )}
           </div>

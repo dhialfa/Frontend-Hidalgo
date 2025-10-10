@@ -3,15 +3,10 @@ import { Link, useLocation } from "react-router";
 
 // Assume these icons are imported from an icon library
 import {
-  BoxCubeIcon,
   ChevronDownIcon,
   GridIcon,
   HorizontaLDots,
   ListIcon,
-  PageIcon,
-  PieChartIcon,
-  PlugInIcon,
-  TableIcon,
   UserCircleIcon,
   GroupIcon
 } from "../icons";
@@ -55,10 +50,11 @@ const navItems: NavItem[] = [
     icon: <GridIcon />,
     subItems: [
       { name: "Subcripciones", path: "/calendar", pro: false },
-      { name: "Planes", path: "/form-elements", pro: false },
+      { name: "Planes", path: "/plans", pro: false },
       { name: "Tareas", path: "/form-elements", pro: false },
     ], 
-  },
+  }
+  /*
   {
     name: "Forms",
     icon: <ListIcon />,
@@ -107,7 +103,8 @@ const othersItems: NavItem[] = [
       { name: "Sign In", path: "/signin", pro: false },
       { name: "Sign Up", path: "/signup", pro: false },
     ],
-  },
+  }
+  */
 ];
 
 const AppSidebar: React.FC = () => {
@@ -128,7 +125,7 @@ const AppSidebar: React.FC = () => {
     (path: string) => location.pathname === path,
     [location.pathname]
   );
-
+/*
   useEffect(() => {
     let submenuMatched = false;
     ["main", "others"].forEach((menuType) => {
@@ -152,7 +149,7 @@ const AppSidebar: React.FC = () => {
       setOpenSubmenu(null);
     }
   }, [location, isActive]);
-
+*/
   useEffect(() => {
     if (openSubmenu !== null) {
       const key = `${openSubmenu.type}-${openSubmenu.index}`;
@@ -324,20 +321,19 @@ const AppSidebar: React.FC = () => {
         <Link to="/">
           {isExpanded || isHovered || isMobileOpen ? (
             <>
-              <img
-                className="dark:hidden"
-                src="/images/logo/logo.svg"
-                alt="Logo"
-                width={150}
-                height={40}
-              />
-              <img
-                className="hidden dark:block"
-                src="/images/logo/logo-dark.svg"
-                alt="Logo"
-                width={150}
-                height={40}
-              />
+              <h2
+                className={`mb-4 text-xl uppercase font-semibold flex leading-[20px] text-gray-500 tracking-wide ${
+                  !isExpanded && !isHovered
+                    ? "lg:justify-center"
+                    : "justify-start"
+                }`}
+              >
+                {isExpanded || isHovered || isMobileOpen ? (
+                  "Computadores Hidalgo"
+                ) : (
+                  <HorizontaLDots className="size-6" />
+                )}
+              </h2>
             </>
           ) : (
             <img
@@ -377,12 +373,12 @@ const AppSidebar: React.FC = () => {
                 }`}
               >
                 {isExpanded || isHovered || isMobileOpen ? (
-                  "Others"
+                  "Otros"
                 ) : (
                   <HorizontaLDots />
                 )}
               </h2>
-              {renderMenuItems(othersItems, "others")}
+             
             </div>
           </div>
         </nav>

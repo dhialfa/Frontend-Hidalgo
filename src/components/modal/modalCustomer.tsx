@@ -14,9 +14,7 @@ export type CustomerFormValues = {
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  /** Si hay valores iniciales -> modo editar; si no -> crear */
   initial?: Partial<CustomerFormValues>;
-  /** El padre define qué hacer con los datos (create/update) */
   onSubmit: (values: CustomerFormValues) => Promise<void>;
   title?: string;
   submitLabel?: string;
