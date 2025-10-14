@@ -16,10 +16,10 @@ import CustomerTable from "./pages/Customers/CustomerTable";
 import UserPage from "./pages/Users/UserTable";
 import Blank from "./pages/Blank";
 import PlanPage from "./pages/Plans/PlanPage"
+import SubscriptionsPage from "./pages/Subscriptions/SubscriptionsPage"
 import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
-
 
 export default function App() {
   return (
@@ -36,6 +36,8 @@ export default function App() {
             <Route path="/calendar" element={<Calendar />} />
             <Route path="/customers" element={<CustomerTable />} />
             <Route path="/plans" element={<PlanPage/>} />
+            <Route path="/subscriptions" element={<SubscriptionsPage />} />
+
             <Route path="/blank" element={<Blank />} />
 
             {/* Forms */}

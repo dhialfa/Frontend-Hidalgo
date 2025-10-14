@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import Badge from "../ui/badge/Badge";
 import { Modal } from "../ui/modal";
 import PlanModal, { PlanFormValues } from "../modal/modalPlans";
+import PlanTasksCrudModal from "../modal/modalPlanTasks";
 
 import {
   getAllPlans,
@@ -10,24 +11,28 @@ import {
   updatePlan,
   deletePlan,
   type Plan,
-} from "../../api/plan/plan.api";
+} from "../../api/plan and subscriptions/plan.api";
 
 export default function PlansGrid() {
   const [data, setData] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Modales plan
+  // Modales plan (crear/editar)
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [selected, setSelected] = useState<Plan | null>(null);
 
-  // Confirm delete
+  // Modal CRUD de tareas
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const [taskPlan, setTaskPlan] = useState<{ id: number; name: string } | null>(null);
+
+  // Confirmación eliminar
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
 
-  // Filtros simples
+  // Filtros
   const [query, setQuery] = useState("");
   const [onlyActive, setOnlyActive] = useState(false);
 
@@ -68,6 +73,13 @@ export default function PlansGrid() {
       return matchQ && matchA;
     });
   }, [data, query, onlyActive]);
+
+  const toNumber = (v: string | number | undefined): number | undefined => {
+    if (v == null || v === "") return undefined;
+    if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
+    const n = Number(v.replace(",", "."));
+    return Number.isFinite(n) ? n : undefined;
+  };
 
   /* ------------------- CRUD PLANES ------------------- */
   const onCreateSubmit = async (values: PlanFormValues) => {
@@ -112,15 +124,17 @@ export default function PlansGrid() {
     }
   };
 
-  const toNumber = (v: string | number | undefined): number | undefined => {
-    if (v == null || v === "") return undefined;
-    if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
-    // normaliza coma -> punto
-    const n = Number(v.replace(",", "."));
-    return Number.isFinite(n) ? n : undefined;
+  /* ------------------- TAREAS (modal CRUD) ------------------- */
+  const openTasks = (p: Plan) => {
+    setTaskPlan({ id: p.id, name: p.name });
+    setTasksOpen(true);
+  };
+  const closeTasks = () => {
+    setTasksOpen(false);
+    setTaskPlan(null);
   };
 
-
+  /* ------------------- UI ------------------- */
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
       {/* Header */}
@@ -213,20 +227,30 @@ export default function PlansGrid() {
                 <div className="mt-5 flex items-center justify-between">
                   <div className="text-xl font-semibold text-gray-900 dark:text-white">
                     {(() => {
-                    const n = toNumber(p.price);
-                    return n != null ? money.format(n) : "—";
+                      const n = toNumber(p.price);
+                      return n != null ? money.format(n) : "—";
                     })()}
-                    <span className="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">/mes</span>
-                  </div>        
+                    <span className="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">
+                      /mes
+                    </span>
+                  </div>
                 </div>
 
                 <footer className="mt-4 flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => openTasks(p)}
+                    className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                  >
+                    Ver tareas
+                  </button>
+
                   <button
                     onClick={() => openEdit(p)}
                     className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
                   >
                     Editar
                   </button>
+
                   <button
                     onClick={() => askDelete(p.id)}
                     className="rounded-lg border border-red-500 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
@@ -240,11 +264,7 @@ export default function PlansGrid() {
           </div>
         )}
 
-        {error && (
-          <p className="mt-3 text-sm text-red-600">
-            {error}
-          </p>
-        )}
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </div>
 
       {/* --- Modales CRUD Plan --- */}
@@ -262,6 +282,13 @@ export default function PlansGrid() {
         onSubmit={onEditSubmit}
         title="Editar plan"
         submitLabel="Actualizar plan"
+      />
+
+      {/* --- Modal CRUD Tareas --- */}
+      <PlanTasksCrudModal
+        isOpen={tasksOpen}
+        onClose={closeTasks}
+        plan={taskPlan}
       />
 
       {/* Confirmación eliminar */}

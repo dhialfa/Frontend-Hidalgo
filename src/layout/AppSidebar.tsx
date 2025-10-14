@@ -49,9 +49,8 @@ const navItems: NavItem[] = [
     name: "Subcripciones y Planes",
     icon: <GridIcon />,
     subItems: [
-      { name: "Subcripciones", path: "/calendar", pro: false },
+      { name: "Subcripciones", path: "/subscriptions", pro: false },
       { name: "Planes", path: "/plans", pro: false },
-      { name: "Tareas", path: "/form-elements", pro: false },
     ], 
   }
   /*
