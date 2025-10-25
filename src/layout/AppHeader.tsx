@@ -84,16 +84,11 @@ const AppHeader: React.FC = () => {
           </button>
 
           <Link to="/" className="lg:hidden">
-            <img
-              className="dark:hidden"
-              src="./images/logo/logo.svg"
-              alt="Logo"
-            />
-            <img
-              className="hidden dark:block"
-              src="./images/logo/logo-dark.svg"
-              alt="Logo"
-            />
+            <h2
+              className={`mb-0 text-lg uppercase font-semibold flex leading-[20px] text-gray-700 dark:text-gray-200 tracking-wide`}
+            >
+              Computadores Hidalgo
+            </h2>
           </Link>
 
           <button
@@ -115,18 +110,6 @@ const AppHeader: React.FC = () => {
               />
             </svg>
           </button>
-          <Link to="/" className="lg:hidden">
-            <img
-              className="dark:hidden"
-              src="./images/logo/logo.svg"
-              alt="Logo"
-            />
-            <img
-              className="hidden dark:block"
-              src="./images/logo/logo-dark.svg"
-              alt="Logo"
-            />
-          </Link>
         </div>
         <div
           className={`${

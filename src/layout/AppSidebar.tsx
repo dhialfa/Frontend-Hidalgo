@@ -41,8 +41,7 @@ const navItems: NavItem[] = [
     icon: <ListIcon />,
     subItems: [
       { name: "Calendario", path: "/calendar", pro: false },
-      { name: "Programar Visita", path: "/form-elements", pro: false },
-      { name: "Visitas", path: "/form-elements", pro: false },
+      { name: "Visitas", path: "/visit", pro: false },
     ], 
   },
   {

@@ -26,6 +26,9 @@ import {
   type CustomerContact,
 } from "../../api/customer/customer-contact.api";
 
+// 👇 Importa la tabla reutilizable de visitas
+import VisitsTable from "./tableVisits";
+
 export default function CustomersTable() {
   const [data, setData] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +51,10 @@ export default function CustomersTable() {
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactForm, setContactForm] = useState<Partial<CustomerContact>>({});
   const [editingContact, setEditingContact] = useState<CustomerContact | null>(null);
+
+  // 👇 Modal visitas
+  const [visitsOpen, setVisitsOpen] = useState(false);
+  const [visitsCustomer, setVisitsCustomer] = useState<Customer | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -175,6 +182,12 @@ export default function CustomersTable() {
     setContactForm({});
   };
 
+  /* ------------------- VISITAS ------------------- */
+  const openVisitsModal = (customer: Customer) => {
+    setVisitsCustomer(customer);
+    setVisitsOpen(true);
+  };
+
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
       {/* Header */}
@@ -196,7 +209,7 @@ export default function CustomersTable() {
           <Table>
             <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
               <TableRow>
-                {["Nombre", "Identificación", "Email", "Teléfono", "Estado", "Acciones"].map((h) => (
+                {["Nombre", "Identificación", "Email", "Teléfono", "Acciones"].map((h) => (
                   <TableCell
                     key={h}
                     isHeader
@@ -237,13 +250,15 @@ export default function CustomersTable() {
                     <TableCell className="px-4 py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                       {c.phone || "—"}
                     </TableCell>
-                    <TableCell className="px-4 py-3 text-theme-sm">
-                      <Badge size="sm" color={c.active ? "success" : "error"}>
-                        {c.active ? "Activo" : "Inactivo"}
-                      </Badge>
-                    </TableCell>
                     <TableCell className="px-4 py-3">
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        {/* 👇 Ahora abre el modal de visitas */}
+                        <button
+                          onClick={() => openVisitsModal(c)}
+                          className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                        >
+                          Ver visitas
+                        </button>
                         <button
                           onClick={() => openContactsModal(c)}
                           className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
@@ -271,7 +286,7 @@ export default function CustomersTable() {
         </div>
       </div>
 
-      {/* --- Modal contactos (sin cambios lógicos, sólo estilos) --- */}
+      {/* --- Modal contactos --- */}
       <Modal
         isOpen={contactsOpen}
         onClose={() => setContactsOpen(false)}
@@ -324,7 +339,7 @@ export default function CustomersTable() {
             Principal
           </label>
 
-          <div className="flex gap-2">
+        <div className="flex gap-2">
             <button
               type="submit"
               className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
@@ -402,7 +417,26 @@ export default function CustomersTable() {
         )}
       </Modal>
 
-      {/* --- Modales CRUD Cliente (estilo igual que UsersTable) --- */}
+      {/* --- Modal visitas (usa VisitsTable en modo byCustomer) --- */}
+      <Modal
+        isOpen={visitsOpen}
+        onClose={() => setVisitsOpen(false)}
+        className="max-w-6xl p-6"
+      >
+        <h4 className="text-lg font-semibold mb-4 dark:text-white/90">
+          Visitas de {visitsCustomer?.name}
+        </h4>
+
+        {visitsCustomer ? (
+          <VisitsTable mode="byCustomer" customerId={visitsCustomer.id} />
+        ) : (
+          <p className="text-sm text-gray-500">
+            Selecciona un cliente para ver sus visitas.
+          </p>
+        )}
+      </Modal>
+
+      {/* --- Modales CRUD Cliente --- */}
       <CustomerModal
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}

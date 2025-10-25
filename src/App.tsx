@@ -9,10 +9,12 @@ import Avatars from "./pages/UiElements/Avatars";
 import Buttons from "./pages/UiElements/Buttons";
 import LineChart from "./pages/Charts/LineChart";
 import BarChart from "./pages/Charts/BarChart";
-import Calendar from "./pages/Calendar";
+import Calendar from "./pages/Visits/Calendar";
 import BasicTables from "./pages/Tables/BasicTables";
 import FormElements from "./pages/Forms/FormElements";
 import CustomerTable from "./pages/Customers/CustomerTable";
+import VisitCreateForm from "./components/form/VisitCreteForm";
+import VisitsPage from "./pages/Visits/VisitsPage";
 import UserPage from "./pages/Users/UserTable";
 import Blank from "./pages/Blank";
 import PlanPage from "./pages/Plans/PlanPage"
@@ -37,6 +39,7 @@ export default function App() {
             <Route path="/customers" element={<CustomerTable />} />
             <Route path="/plans" element={<PlanPage/>} />
             <Route path="/subscriptions" element={<SubscriptionsPage />} />
+            <Route path="/visit" element={<VisitsPage/>} />
 
             <Route path="/blank" element={<Blank />} />
 

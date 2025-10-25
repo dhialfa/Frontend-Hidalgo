@@ -15,6 +15,13 @@ export interface PlanSubscription {
   updated_at: string | null;
   created_by?: number | null;
   updated_by?: number | null;
+  customer_info?: {
+    id: number;
+    name: string;
+    identification?: string;
+    email?: string;
+    phone?: string;
+  };
 }
 
 export interface CreatePlanSubscriptionDTO {
@@ -79,6 +86,6 @@ export const getSubscriptionsByPlan = (planId: number | string, status?: string)
 export const createSubscriptionByPlan = (planId: number | string, payload: Omit<CreatePlanSubscriptionDTO, "plan">) =>
   PlanSubsApi.post<PlanSubscription>(`/by-plan/${planId}/`, payload);
 
-// Acción rápida opcional (tu backend la tiene)
+// Acción rápida opcional
 export const cancelSubscription = (id: number | string) =>
   PlanSubsApi.post<{ detail: string }>(`/${id}/cancel/`);

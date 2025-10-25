@@ -1,7 +1,7 @@
 // src/api/plans.ts
 import axios, { AxiosInstance } from "axios";
 
-const URL = "http://127.0.0.1:8000";
+const URL = "http://localhost:8000";
 
 // Ajusta estos campos a lo que devuelve tu backend
 export interface Plan {
