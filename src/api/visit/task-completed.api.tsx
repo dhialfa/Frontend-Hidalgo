@@ -3,14 +3,13 @@ import axios, { AxiosInstance } from "axios";
 
 const URL = "http://localhost:8000";
 
-// ====================== Tipos ======================
 export interface TaskCompleted {
   id: number;
-  visit: number;                 // FK a la visita
-  plan_task?: number | null;     // FK al PlanTask original (si aplica)
+  visit: number;                 
+  plan_task?: number | null;     
   name: string;
   description?: string;
-  hours?: number;                // p.ej. 0..4294967295
+  hours?: number;                
   completada: boolean;
   created_at?: string;
   updated_at?: string;
@@ -23,14 +22,14 @@ export interface CreateTaskCompletedDTO {
   name: string;
   description?: string;
   hours?: number;
-  completada?: boolean;          // por defecto true si tu API así lo define
+  completada?: boolean;          
 }
 
 // Para actualizar (parcial)
 export type UpdateTaskCompletedDTO = Partial<CreateTaskCompletedDTO>;
 
 const TasksCompletedApi: AxiosInstance = axios.create({
-  baseURL: `${URL}/api/tasks-completed`,
+  baseURL: `${URL}/api/task-completed`,
 });
 
 // ====================== CRUD ======================

@@ -1,6 +1,7 @@
 // src/components/visits/VisitsTable.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "../ui/table";
+import Pagination from "../ui/Pagination";
 import {
   getVisits,
   getVisitsByCustomer,
@@ -21,6 +22,9 @@ import VisitModal, {
   type VisitBackendDTO,
   type VisitModalInitial,
 } from "../../components/modal/VisitModal";
+import MaterialsUsedModal from "../modal/MaterialUsedModal";
+import EvidencesModal from "../modal/EvidencesModal";
+import TasksCompletedModal from "../modal/TaskCompletedModal";
 
 type Mode = "all" | "byCustomer";
 
@@ -46,19 +50,23 @@ function fmtDate(date?: string | null) {
   const d = new Date(date);
   return d.toLocaleString();
 }
-function unwrapList<T>(payload: any): T[] {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.results)) return payload.results;
-  if (Array.isArray(payload?.data)) return payload.data;
-  return [];
-}
 function uniqNumbers(arr: Array<number | null | undefined>): number[] {
   return Array.from(new Set(arr.filter((x): x is number => typeof x === "number")));
 }
 function toDateOnly(isoLike?: string | null) {
   return (isoLike || "").slice(0, 10);
 }
+function ActionSeparator() {
+  return <span aria-hidden className="mx-1 h-6 w-px self-center bg-gray-200 dark:bg-white/10" />;
+}
 
+type PlanTaskLite = { id: number; name: string; description?: string };
+type PlanSubscriptionWithDetail = PlanSubscription & {
+  plan_detail?: { tasks?: PlanTaskLite[] };
+};
+
+// Si tus funciones API devuelven AxiosResponse, mantenemos .data.
+// Si ya devolvieran PageResp directamente, elimina los “.data” más abajo.
 export default function VisitsTable({
   mode,
   customerId,
@@ -74,7 +82,8 @@ export default function VisitsTable({
 
   // Paginación
   const [page, setPage] = useState(1);
-  const [count, setCount] = useState<number | null>(null);
+  const [count, setCount] = useState(0);
+  const [pageSizeState, setPageSizeState] = useState(pageSize);
 
   // Filtros
   const [search, setSearch] = useState("");
@@ -84,8 +93,8 @@ export default function VisitsTable({
   // Acción rápida en curso
   const [actingId, setActingId] = useState<number | null>(null);
 
-  // Cache de suscripciones (para nombre de cliente)
-  const [subCache, setSubCache] = useState<Record<number, PlanSubscription>>({});
+  // Cache suscripciones
+  const [subCache, setSubCache] = useState<Record<number, PlanSubscriptionWithDetail>>({});
 
   // MODAL CRUD
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -102,56 +111,55 @@ export default function VisitsTable({
     customerName: "",
   });
 
-  // Fila expandida (para mostrar acciones al tocar)
+  // Modales secundarios
+  const [materialsOpen, setMaterialsOpen] = useState(false);
+  const [materialsVisitId, setMaterialsVisitId] = useState<number | null>(null);
+
+  const [evidencesOpen, setEvidencesOpen] = useState(false);
+  const [evidencesVisitId, setEvidencesVisitId] = useState<number | null>(null);
+
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const [tasksVisitId, setTasksVisitId] = useState<number | null>(null);
+  const [tasksPlanTasks, setTasksPlanTasks] = useState<PlanTaskLite[]>([]);
+
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
-  function toggleRow(id: number) {
-    setExpandedRow(prev => (prev === id ? null : id));
-  }
+  const toggleRow = (id: number) => setExpandedRow(prev => (prev === id ? null : id));
 
-  const headerTitle = useMemo(() => {
-    if (title) return title;
-    return mode === "byCustomer" ? "Visitas por cliente" : "Visitas";
-  }, [mode, title]);
+  const headerTitle = useMemo(() => title ?? (mode === "byCustomer" ? "Visitas por cliente" : "Visitas"), [mode, title]);
 
+  // Loader con paginación DRF
   const load = async () => {
     setLoading(true);
     setErr(null);
     try {
-      const params: any = { page, page_size: pageSize, ordering };
+      const params: any = { page, page_size: pageSizeState, ordering };
       if (search.trim()) params.search = search.trim();
       if (status !== "all") params.status = status;
 
-      const res =
-        mode === "byCustomer"
-          ? await getVisitsByCustomer(customerId!, params)
-          : await getVisits(params);
+      const res = mode === "byCustomer"
+        ? await getVisitsByCustomer(customerId!, params)
+        : await getVisits(params);
 
-      const data = res.data as any;
-      const list = unwrapList<Visit>(data);
+      const data: any = res.data; // si tus APIs ya devuelven PageResp, usa: const data = res;
+      const results: Visit[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.results)
+          ? data.results
+          : [];
 
-      // Prefetch suscripciones para mostrar nombre del cliente
-      const subIds = uniqNumbers(list.map(v => (v as any).subscription ?? undefined));
+      setRows(results);
+      setCount(Array.isArray(data) ? data.length : Number(data?.count ?? 0));
+
+      // Prefetch subscriptions para cliente/tareas
+      const subIds = uniqNumbers(results.map(v => (v as any).subscription));
       const missing = subIds.filter(id => !(id in subCache));
       if (missing.length) {
-        const results = await Promise.allSettled(missing.map(id => getPlanSubscription(id)));
-        const fetched: Record<number, PlanSubscription> = {};
-        results.forEach((r, i) => {
-          if (r.status === "fulfilled") fetched[missing[i]] = r.value.data;
+        const fetchedEntries = await Promise.allSettled(missing.map(id => getPlanSubscription(id)));
+        const next: Record<number, PlanSubscriptionWithDetail> = {};
+        fetchedEntries.forEach((r, i) => {
+          if (r.status === "fulfilled") next[missing[i]] = r.value.data as PlanSubscriptionWithDetail;
         });
-        if (Object.keys(fetched).length) {
-          setSubCache(prev => ({ ...prev, ...fetched }));
-        }
-      }
-
-      if (Array.isArray(data)) {
-        setRows(list);
-        setCount(data.length);
-      } else if (data?.results != null) {
-        setRows(list);
-        setCount(data.count ?? null);
-      } else {
-        setRows([]);
-        setCount(0);
+        if (Object.keys(next).length) setSubCache(prev => ({ ...prev, ...next }));
       }
     } catch (e: any) {
       setErr(e?.response?.data?.detail || "Error al cargar visitas");
@@ -166,12 +174,12 @@ export default function VisitsTable({
     if (mode === "byCustomer" && !customerId) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, customerId, page, pageSize, search, status, ordering]);
+  }, [mode, customerId, page, pageSizeState, search, status, ordering]);
 
-  const pageCount = useMemo(() => {
-    if (count == null) return null;
-    return Math.max(1, Math.ceil(count / pageSize));
-  }, [count, pageSize]);
+  const pageCount = useMemo(
+    () => Math.max(1, Math.ceil((count || 0) / pageSizeState)),
+    [count, pageSizeState]
+  );
 
   // Acciones rápidas
   const doStart = async (id: number) => {
@@ -196,15 +204,14 @@ export default function VisitsTable({
     const reason = prompt("Motivo de cancelación (opcional):") ?? "";
     setActingId(id);
     try {
-      // Si tu endpoint acepta motivo: await cancelVisit(id, reason)
-      await cancelVisit(id);
+      await cancelVisit(id, reason); // usa motivo si tu endpoint lo soporta
       await load();
     } finally {
       setActingId(null);
     }
   };
 
-  // Abrir modal para crear
+  // Crear / Editar
   const openCreate = () => {
     const today = toDateOnly(new Date().toISOString());
     setModalInitial({
@@ -222,12 +229,9 @@ export default function VisitsTable({
     setIsModalOpen(true);
   };
 
-  // Abrir modal para editar
   const openEdit = (v: Visit) => {
     const subId = (v as any).subscription ?? null;
-    const cName = subId && subCache[subId]?.customer_info?.name
-      ? subCache[subId]!.customer_info!.name
-      : "";
+    const cName = subId && subCache[subId]?.customer_info?.name ? subCache[subId]!.customer_info!.name : "";
     setModalInitial({
       id: v.id,
       subscriptionId: subId ?? null,
@@ -243,22 +247,37 @@ export default function VisitsTable({
     setIsModalOpen(true);
   };
 
-  // Guardar desde modal
-  async function onSaveFromModal(dto: VisitBackendDTO, opts?: { id?: number | null }) {
+  const onSaveFromModal = async (dto: VisitBackendDTO, opts?: { id?: number | null }) => {
     if (opts?.id) await updateVisit(opts.id, dto as any);
     else await createVisit(dto as any);
     setIsModalOpen(false);
+    // si agregaste un registro y ordenas por -start, vuelve a la primera página
+    if (!opts?.id && ordering === "-start") setPage(1);
     await load();
-  }
+  };
 
-  // Eliminar desde modal
-  async function onDeleteFromModal(id: number) {
+  const onDeleteFromModal = async (id: number) => {
     await deleteVisit(id);
+    // si borras el último de la página, retrocede
+    if (rows.length - 1 <= 0 && page > 1) setPage(p => p - 1);
     setIsModalOpen(false);
     await load();
+  };
+
+  // Helpers de tareas
+  function getPlanTasksForVisit(v: Visit): PlanTaskLite[] {
+    const subId = (v as any)?.subscription;
+    if (!subId) return [];
+    const sub = subCache[subId] as PlanSubscriptionWithDetail | undefined;
+    const tasks = sub?.plan_detail?.tasks;
+    return Array.isArray(tasks) ? tasks.map(t => ({ id: t.id, name: t.name, description: t.description })) : [];
+  }
+  function openTasks(v: Visit) {
+    setTasksPlanTasks(getPlanTasksForVisit(v));
+    setTasksVisitId(v.id);
+    setTasksOpen(true);
   }
 
-  // Columnas (definen el ancho del colSpan)
   const columns = useMemo(() => {
     const base = [
       ...(showIds ? [{ key: "id", label: "ID" as const }] : []),
@@ -268,7 +287,7 @@ export default function VisitsTable({
       { key: "estado", label: "Estado" as const },
       { key: "direccion", label: "Dirección" as const },
       { key: "notas", label: "Notas" as const },
-      { key: "toggle", label: " " as const }, // columna para ▼/▲
+      { key: "toggle", label: " " as const },
     ] as const;
     return base;
   }, [showIds]);
@@ -277,7 +296,9 @@ export default function VisitsTable({
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-6 border-b border-gray-100 dark:border-white/[0.06]">
-        <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">{headerTitle}</h3>
+        <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">
+          {headerTitle}
+        </h3>
 
         <div className="flex flex-wrap items-center gap-2">
           {showFilters && (
@@ -308,13 +329,24 @@ export default function VisitsTable({
                 <option value="start">Más antiguas</option>
                 <option value="-status">Estado desc.</option>
                 <option value="status">Estado asc.</option>
-                <option value="-id">ID desc.</option>
-                <option value="id">ID asc.</option>
+                {showIds && (
+                  <>
+                    <option value="-id">ID desc.</option>
+                    <option value="id">ID asc.</option>
+                  </>
+                )}
+              </select>
+              <select
+                value={pageSizeState}
+                onChange={(e) => { setPage(1); setPageSizeState(Number(e.target.value)); }}
+                className="h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm focus:border-brand-300 focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                title="Registros por página"
+              >
+                {[10, 20, 25, 50, 100].map(n => <option key={n} value={n}>{n}/pág</option>)}
               </select>
             </>
           )}
 
-          {/* Botón CREAR */}
           <button
             onClick={openCreate}
             className="h-10 rounded-lg bg-brand-500 px-3 text-sm font-medium text-white hover:bg-brand-600"
@@ -339,7 +371,6 @@ export default function VisitsTable({
             </TableHeader>
 
             <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-              {/* Filas especiales con <tr> y <td colSpan> */}
               {loading && (
                 <tr>
                   <td colSpan={columns.length} className="px-5 py-4 text-start text-gray-600 dark:text-gray-400">
@@ -356,7 +387,6 @@ export default function VisitsTable({
                 </tr>
               )}
 
-              {/* Filas de datos: usamos <tr> nativo para onClick */}
               {!loading && rows.map((v) => {
                 const start = (v as any).start ?? null;
                 const end = (v as any).end ?? null;
@@ -376,7 +406,7 @@ export default function VisitsTable({
                     <tr
                       onClick={() => toggleRow(v.id)}
                       className={`cursor-pointer transition-colors ${
-                        isOpen ? "bg-gray-50 dark:bg-white/[0.04]" : "hover:bg-gray-50 dark:hover:bg-white/[0.02]"
+                        isOpen ? "bg-gray-50 dark:bg-white/[0.04]" : "hover:bg-gray-50 dark:hover:bg白/[0.02]"
                       }`}
                     >
                       {showIds && (
@@ -384,59 +414,42 @@ export default function VisitsTable({
                           {v.id}
                         </TableCell>
                       )}
-
                       <TableCell className="px-4 py-3 text-gray-800 dark:text-gray-100 text-theme-sm font-medium">
                         {cName}
                       </TableCell>
-
                       <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm">
                         {fmtDate(start)}
                       </TableCell>
-
                       <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm">
                         {fmtDate(end)}
                       </TableCell>
-
                       <TableCell className="px-4 py-3">
                         <StatusPill status={state} />
                       </TableCell>
-
                       <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm">
                         {siteAddress || "—"}
                       </TableCell>
-
                       <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm truncate max-w-[240px]">
                         {v.notes || "—"}
                       </TableCell>
-
                       <TableCell className="px-4 py-3 text-gray-400 text-xs select-none">
                         {isOpen ? "▲" : "▼"}
                       </TableCell>
                     </tr>
 
-                    {/* Fila expandida con acciones */}
                     {isOpen && (
                       <tr className="bg-gray-50 dark:bg-white/[0.03]">
                         <td colSpan={columns.length} className="px-5 py-3">
-                          <div className="flex flex-wrap gap-3">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); openEdit(v); }}
-                              className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
-                            >
-                              Editar
-                            </button>
+                          <div className="flex flex-wrap items-center gap-3">
                             <button
                               onClick={(e) => { e.stopPropagation(); doStart(v.id); }}
                               disabled={actingId === v.id}
-                              className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                              className="rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 px-3 py-1.5 text-xs font-semibold hover:bg-amber-200 disabled:opacity-60"
                             >
                               Iniciar
                             </button>
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                doComplete(v.id);
-                              }}
+                              onClick={(e) => { e.stopPropagation(); doComplete(v.id); }}
                               disabled={actingId === v.id}
                               className="rounded-lg bg-green-100 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-200 disabled:opacity-60"
                             >
@@ -448,6 +461,33 @@ export default function VisitsTable({
                               className="rounded-lg border border-red-500 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
                             >
                               Cancelar
+                            </button>
+
+                            <ActionSeparator />
+
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openEdit(v); }}
+                              className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setMaterialsVisitId(v.id); setMaterialsOpen(true); }}
+                              className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                            >
+                              Materiales usados
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEvidencesVisitId(v.id); setEvidencesOpen(true); }}
+                              className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                            >
+                              Evidencias
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setTasksPlanTasks(getPlanTasksForVisit(v)); setTasksVisitId(v.id); setTasksOpen(true); }}
+                              className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                            >
+                              Tareas
                             </button>
                           </div>
                         </td>
@@ -461,30 +501,20 @@ export default function VisitsTable({
         </div>
       </div>
 
-      {/* Paginación */}
-      {pageCount && pageCount > 1 && (
-        <div className="flex items-center justify-between px-5 py-3 sm:px-6 border-t border-gray-100 dark:border-white/[0.06]">
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            Página {page} de {pageCount}
-          </span>
-          <div className="flex gap-2">
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-50 dark:border-gray-700"
-            >
-              Anterior
-            </button>
-            <button
-              disabled={page >= pageCount}
-              onClick={() => setPage((p) => p + 1)}
-              className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-50 dark:border-gray-700"
-            >
-              Siguiente
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Paginación (usa tu componente reutilizable) */}
+      <div className="flex items-center justify-between px-5 py-3 sm:px-6 border-t border-gray-100 dark:border-white/[0.06]">
+        <span className="text-xs text-gray-500 dark:text-gray-400">
+          Página {page} de {pageCount} • Total: {count}
+        </span>
+        <Pagination
+          page={page}
+          totalPages={pageCount}
+          onPageChange={setPage}
+          pageSize={pageSizeState}
+          onPageSizeChange={(n) => { setPage(1); setPageSizeState(n); }}
+          pageSizeOptions={[10, 20, 25, 50, 100]}
+        />
+      </div>
 
       {err && (
         <div className="px-5 py-3 text-sm text-red-600 dark:text-red-400 border-t border-red-100 dark:border-red-900/30">
@@ -492,7 +522,6 @@ export default function VisitsTable({
         </div>
       )}
 
-      {/* MODAL CRUD */}
       <VisitModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -501,6 +530,25 @@ export default function VisitsTable({
         onDelete={modalInitial.id ? onDeleteFromModal : undefined}
         subCache={subCache}
         setSubCache={setSubCache}
+      />
+
+      <MaterialsUsedModal
+        isOpen={materialsOpen}
+        onClose={() => setMaterialsOpen(false)}
+        visitId={materialsVisitId}
+      />
+
+      <EvidencesModal
+        isOpen={evidencesOpen}
+        onClose={() => setEvidencesOpen(false)}
+        visitId={evidencesVisitId}
+      />
+
+      <TasksCompletedModal
+        isOpen={tasksOpen}
+        onClose={() => setTasksOpen(false)}
+        visitId={tasksVisitId}
+        planTasks={tasksPlanTasks}
       />
     </div>
   );

@@ -27,7 +27,7 @@ export interface UpdateEvidenceDTO {
 }
 
 const EvidenceApi: AxiosInstance = axios.create({
-  baseURL: `${URL}/api/evidences`,
+  baseURL: `${URL}/api/evidence`,
 });
 
 // ====================== CRUD ======================

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+// src/components/customers/CustomersTable.tsx
+import { useMemo, useState } from "react";
 import {
   Table,
   TableBody,
@@ -8,15 +9,18 @@ import {
 } from "../ui/table";
 import Badge from "../ui/badge/Badge";
 import { Modal } from "../ui/modal/index";
+import Pagination from "../ui/Pagination";
+import { usePager } from "../../hooks/usePager";
+
 import CustomerModal, { CustomerFormValues } from "../modal/modalCustomer";
 
 import {
-  getAllCustomers,
+  getCustomers,          // ⬅️ listado paginado (nuevo)
   createCustomer,
   updateCustomer,
   deleteCustomer,
+  type Customer,
 } from "../../api/customer/customer.api";
-import type { Customer } from "../../api/customer/customer.api";
 
 import {
   getContactsByCustomer,
@@ -26,20 +30,28 @@ import {
   type CustomerContact,
 } from "../../api/customer/customer-contact.api";
 
-// 👇 Importa la tabla reutilizable de visitas
+// 👇 Tabla reutilizable de visitas
 import VisitsTable from "./tableVisits";
 
 export default function CustomersTable() {
-  const [data, setData] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // -------- Paginación + filtros ----------
+  const {
+    page, setPage,
+    pageSize, setPageSize,
+    totalPages, count,
+    rows, loading, error,
+    params, setParams,
+    reload,
+  } = usePager<Customer>(getCustomers, {
+    ordering: "name",     // orden inicial
+    page_size: 25,
+  });
 
-  // Modales cliente
+  // -------- UI state ----------
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [selected, setSelected] = useState<Customer | null>(null);
 
-  // Confirm delete
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
@@ -56,30 +68,17 @@ export default function CustomersTable() {
   const [visitsOpen, setVisitsOpen] = useState(false);
   const [visitsCustomer, setVisitsCustomer] = useState<Customer | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await getAllCustomers();
-        setData(res.data as Customer[]);
-      } catch (e: any) {
-        setError(e?.response?.data?.detail || "Error al cargar clientes");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
   /* ------------------- CRUD CLIENTES ------------------- */
   const onCreateSubmit = async (values: CustomerFormValues) => {
-    const res = await createCustomer(values);
-    setData((prev) => [res.data as Customer, ...prev]);
+    await createCustomer(values);
+    setPage(1);           // vuelve a primera página
+    await reload();       // recarga datos
   };
 
   const onEditSubmit = async (values: CustomerFormValues) => {
     if (!selected) return;
-    const res = await updateCustomer(selected.id, values);
-    const updated = res.data as Customer;
-    setData((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    await updateCustomer(selected.id, values);
+    await reload();       // recarga la página actual
   };
 
   const openEdit = (row: Customer) => {
@@ -100,7 +99,9 @@ export default function CustomersTable() {
     setDeletingIds((s) => new Set(s).add(id));
     try {
       await deleteCustomer(id);
-      setData((prev) => prev.filter((c) => c.id !== id));
+      // si queda la página vacía tras borrar, retrocede una
+      if (rows.length - 1 <= 0 && page > 1) setPage(page - 1);
+      await reload();
     } catch {
       alert("Error al eliminar cliente");
     } finally {
@@ -110,6 +111,25 @@ export default function CustomersTable() {
         return next;
       });
     }
+  };
+
+  /* ------------------- Búsqueda & orden ------------------- */
+  const onSearch = (term: string) => {
+    setParams((p: any) => ({ ...p, search: term || undefined }));
+    setPage(1);
+  };
+
+  const currentOrdering = String(params?.ordering || "name");
+  const toggleOrdering = (field: string) => {
+    const isSame = currentOrdering.replace("-", "") === field;
+    const next = isSame && !currentOrdering.startsWith("-") ? `-${field}` : field;
+    setParams((p: any) => ({ ...p, ordering: next }));
+    setPage(1);
+  };
+  const orderingIcon = (field: string) => {
+    const base = currentOrdering.replace("-", "");
+    if (base !== field) return "↕";
+    return currentOrdering.startsWith("-") ? "↓" : "↑";
   };
 
   /* ------------------- CONTACTOS ------------------- */
@@ -138,7 +158,6 @@ export default function CustomersTable() {
   const submitContact = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contactsCustomer) return;
-
     try {
       if (editingContact) {
         const res = await updateCustomerContact(editingContact.id, contactForm);
@@ -195,12 +214,20 @@ export default function CustomersTable() {
         <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">
           Clientes
         </h3>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="inline-flex items-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 shadow-theme-xs"
-        >
-          Añadir cliente +
-        </button>
+        <div className="flex items-center gap-3">
+          <input
+            type="text"
+            placeholder="Buscar…"
+            className="w-64 rounded-lg border px-3 py-2 text-sm"
+            onChange={(e) => onSearch(e.target.value)}
+          />
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="inline-flex items-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 shadow-theme-xs"
+          >
+            Añadir cliente +
+          </button>
+        </div>
       </div>
 
       {/* Tabla */}
@@ -209,17 +236,49 @@ export default function CustomersTable() {
           <Table>
             <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
               <TableRow>
-                {["Nombre", "Identificación", "Email", "Teléfono", "Acciones"].map((h) => (
-                  <TableCell
-                    key={h}
-                    isHeader
-                    className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                  <button
+                    type="button"
+                    onClick={() => toggleOrdering("name")}
+                    title="Ordenar por nombre"
+                    className="cursor-pointer inline-flex items-center gap-1 w-full text-left"
                   >
-                    {h}
-                  </TableCell>
-                ))}
+                    Nombre <span className="ml-1 text-gray-400">{orderingIcon("name")}</span>
+                  </button>
+                </TableCell>
+
+                <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                  <button
+                    type="button"
+                    onClick={() => toggleOrdering("identification")}
+                    title="Ordenar por identificación"
+                    className="cursor-pointer inline-flex items-center gap-1 w-full text-left"
+                  >
+                    Identificación <span className="ml-1 text-gray-400">{orderingIcon("identification")}</span>
+                  </button>
+                </TableCell>
+
+                <TableCell
+                  isHeader
+                  className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                >
+                  Email
+                </TableCell>
+                <TableCell
+                  isHeader
+                  className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                >
+                  Teléfono
+                </TableCell>
+                <TableCell
+                  isHeader
+                  className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                >
+                  Acciones
+                </TableCell>
               </TableRow>
             </TableHeader>
+
             <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
               {loading && (
                 <TableRow>
@@ -228,15 +287,25 @@ export default function CustomersTable() {
                   </TableCell>
                 </TableRow>
               )}
-              {!loading && data.length === 0 && (
+
+              {!loading && error && (
+                <TableRow>
+                  <TableCell className="px-5 py-4 text-start text-red-600">
+                    {error}
+                  </TableCell>
+                </TableRow>
+              )}
+
+              {!loading && !error && rows.length === 0 && (
                 <TableRow>
                   <TableCell className="px-5 py-4 text-start">
                     No hay clientes registrados.
                   </TableCell>
                 </TableRow>
               )}
-              {!loading &&
-                data.map((c) => (
+
+              {!loading && !error &&
+                rows.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell className="px-5 py-4 sm:px-6 text-start text-theme-sm text-gray-800 dark:text-white/90">
                       {c.name}
@@ -252,7 +321,6 @@ export default function CustomersTable() {
                     </TableCell>
                     <TableCell className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
-                        {/* 👇 Ahora abre el modal de visitas */}
                         <button
                           onClick={() => openVisitsModal(c)}
                           className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
@@ -273,9 +341,10 @@ export default function CustomersTable() {
                         </button>
                         <button
                           onClick={() => askDelete(c.id)}
-                          className="rounded-lg border border-red-500 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+                          disabled={deletingIds.has(c.id)}
+                          className="rounded-lg border border-red-500 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50"
                         >
-                          Eliminar
+                          {deletingIds.has(c.id) ? "Eliminando..." : "Eliminar"}
                         </button>
                       </div>
                     </TableCell>
@@ -284,6 +353,19 @@ export default function CustomersTable() {
             </TableBody>
           </Table>
         </div>
+      </div>
+
+      {/* Footer: info + paginación */}
+      <div className="px-5 pb-4 sm:px-6">
+        <div className="mt-2 text-xs text-gray-500">Total: {count}</div>
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          pageSize={pageSize}
+          onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+          pageSizeOptions={[10, 25, 50, 100]}
+      />
       </div>
 
       {/* --- Modal contactos --- */}
@@ -339,7 +421,7 @@ export default function CustomersTable() {
             Principal
           </label>
 
-        <div className="flex gap-2">
+          <div className="flex gap-2">
             <button
               type="submit"
               className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
