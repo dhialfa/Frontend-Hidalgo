@@ -4,7 +4,7 @@ import { Modal } from "../ui/modal";
 import {
   getTasksCompletedByVisitPaged,
   createTaskCompleted,
-  updateTaskCompleted,
+  updateTaskCompleted,   
   deleteTaskCompleted,
   toggleCompleted,
   type TaskCompleted,
@@ -143,32 +143,41 @@ export default function TasksCompletedModal({
       return;
     }
 
-    // payload común
+    // Normaliza plan_task
+    const planTaskVal =
+      form.plan_task === undefined ? null : (form.plan_task || null);
+
+    // Normaliza hours
+    const hoursVal =
+      form.hours === "" || form.hours === undefined
+        ? undefined
+        : Number(form.hours);
+
+    // payload común creación
     const payloadFull: CreateTaskCompletedDTO = {
       visit: visitId,
-      plan_task: form.plan_task === undefined ? null : (form.plan_task || null),
+      plan_task: planTaskVal,
       name,
       description: form.description?.trim() || undefined,
-      hours:
-        form.hours === "" || form.hours === undefined
-          ? undefined
-          : Number(form.hours),
+      hours: Number.isFinite(hoursVal as number) ? (hoursVal as number) : undefined,
       completada: form.completada ?? true,
     };
 
     try {
       setSaving(true);
       if (form.id) {
-        // EDITAR
+        // ===== EDITAR =====
+        // Si tu update es PUT (reemplazo completo), mandamos también visit.
         await updateTaskCompleted(form.id, {
-          plan_task: payloadFull.plan_task,
-          name: payloadFull.name,
-          description: payloadFull.description,
-          hours: payloadFull.hours,
-          completada: payloadFull.completada,
-        });
+          visit: visitId, // <<--- CLAVE: incluir visit al editar
+          plan_task: planTaskVal,
+          name,
+          description: form.description?.trim() || undefined,
+          hours: Number.isFinite(hoursVal as number) ? (hoursVal as number) : undefined,
+          completada: form.completada ?? true,
+        } as any); // si tu tipo de update es Partial, este cast evita error de TS
       } else {
-        // CREAR
+        // ===== CREAR =====
         await createTaskCompleted(payloadFull);
         // tras crear, volver a la página 1 para ver el nuevo primero (por orden)
         setPage(1);

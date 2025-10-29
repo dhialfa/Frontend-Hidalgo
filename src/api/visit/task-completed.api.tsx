@@ -26,7 +26,7 @@ export interface CreateTaskCompletedDTO {
   completada?: boolean;
 }
 
-export type UpdateTaskCompletedDTO = Partial<CreateTaskCompletedDTO>;
+export type UpdateTaskCompletedPATCH = Partial<CreateTaskCompletedDTO>; // para PATCH
 
 /** Respuesta paginada estándar DRF */
 export type PageResp<T> = {
@@ -39,44 +39,43 @@ export type PageResp<T> = {
 /* ====================== Axios ====================== */
 const TasksCompletedApi: AxiosInstance = axios.create({
   baseURL: `${API}/api/task-completed/`, // barra final importante
+  // withCredentials: true, // <- habilítalo si usas cookies de sesión
 });
 
 /* ====================== Listado paginado ====================== */
-/** GET /api/task-completed/?page=&page_size=&ordering=&search=... */
 export const getTasksCompleted = async (params: Record<string, any> = {}) => {
   const res = await TasksCompletedApi.get<PageResp<TaskCompleted>>("", { params });
   return res.data;
 };
 
-/** Navegar usando URL absoluta de DRF (next/previous) */
 export const getTasksCompletedByUrl = async (url: string) => {
   const res = await axios.get<PageResp<TaskCompleted>>(url);
   return res.data;
 };
 
 /* ====================== CRUD ====================== */
-// GET /api/task-completed/{id}/
 export const getTaskCompleted = (id: number | string) =>
   TasksCompletedApi.get<TaskCompleted>(`${id}/`);
 
-// POST /api/task-completed/
 export const createTaskCompleted = (payload: CreateTaskCompletedDTO) =>
   TasksCompletedApi.post<TaskCompleted>("", payload);
 
-// PATCH /api/task-completed/{id}/
-export const patchTaskCompleted = (id: number | string, payload: UpdateTaskCompletedDTO) =>
-  TasksCompletedApi.patch<TaskCompleted>(`${id}/`, payload);
+// PATCH parcial (no exige 'visit')
+export const updateTaskCompletedPatch = (
+  id: number | string,
+  payload: UpdateTaskCompletedPATCH
+) => TasksCompletedApi.patch<TaskCompleted>(`${id}/`, payload);
 
-// PUT /api/task-completed/{id}/
-export const updateTaskCompleted = (id: number | string, payload: UpdateTaskCompletedDTO) =>
-  TasksCompletedApi.put<TaskCompleted>(`${id}/`, payload);
+// PUT completo (exige 'visit' y el resto de campos necesarios)
+export const updateTaskCompleted = (
+  id: number | string,
+  payload: CreateTaskCompletedDTO
+) => TasksCompletedApi.put<TaskCompleted>(`${id}/`, payload);
 
-// DELETE /api/task-completed/{id}/
 export const deleteTaskCompleted = (id: number | string) =>
   TasksCompletedApi.delete<void>(`${id}/`);
 
 /* ====================== Relacionales ====================== */
-/** GET paginado /api/task-completed/by-visit/{visit_id}/?page=&page_size=&ordering= */
 export const getTasksCompletedByVisitPaged = async (
   visitId: number | string,
   params: Record<string, any> = {}
@@ -88,7 +87,6 @@ export const getTasksCompletedByVisitPaged = async (
   return res.data;
 };
 
-/** Helper: trae TODAS las páginas por visita (útil para UI sin paginar) */
 export const getTasksCompletedByVisitAll = async (
   visitId: number | string,
   params: Record<string, any> = {}
@@ -109,15 +107,12 @@ export const getTasksCompletedByVisitAll = async (
 };
 
 /* ====================== Acciones ====================== */
-// POST /api/task-completed/{id}/restore/
 export const restoreTaskCompleted = (id: number | string) =>
   TasksCompletedApi.post<TaskCompleted>(`${id}/restore/`);
 
-/** Marca una tarea como completada (idempotente si tu API lo permite). */
 export const markCompleted = (id: number | string, completed = true) =>
-  patchTaskCompleted(id, { completada: completed });
+  updateTaskCompletedPatch(id, { completada: completed });
 
-/** Cambia el estado 'completada' a lo contrario (útil en la UI). */
 export const toggleCompleted = async (item: TaskCompleted) => {
   const next = !item.completada;
   return markCompleted(item.id, next);
