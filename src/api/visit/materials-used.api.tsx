@@ -1,17 +1,17 @@
 // src/api/materialsUsed.ts
-import axios, { AxiosInstance, AxiosRequestConfig } from "axios";
+import axios, { AxiosInstance } from "axios";
 
-const URL = "http://localhost:8000";
+const API = import.meta.env?.VITE_API_URL ?? "http://localhost:8000";
 
-/* ====================== Tipos (acorde a tu backend actual) ====================== */
+/* ====================== Tipos ====================== */
 export interface MaterialUsed {
   id: number;
-  visit: number;                  // FK a la visita
-  description: string;            // descripción del material
-  unit: string | number;          // cantidades usadas (viene como string desde el backend)
-  unit_cost: string | number;     // costo unitario (también suele venir como string)
-  created_at?: string;
-  updated_at?: string;
+  visit: number;                 // FK a la visita
+  description: string;
+  unit: string | number;         // suele venir como string/decimal desde DRF
+  unit_cost: string | number;    // idem
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface CreateMaterialUsedDTO {
@@ -21,70 +21,99 @@ export interface CreateMaterialUsedDTO {
   unit_cost: string | number;
 }
 
-export type UpdateMaterialUsedDTO = Partial<CreateMaterialUsedDTO>;
+export interface UpdateMaterialUsedDTO {
+  visit?: number | string;
+  description?: string;
+  unit?: string | number;
+  unit_cost?: string | number;
+}
 
-/* ====================== Axios Instance ====================== */
-// OJO: plural correcto "materials-used"
-const MaterialsUsedApi: AxiosInstance = axios.create({
-  baseURL: `${URL}/api/material-used`,
-});
+/** Respuesta paginada estándar DRF */
+export type PageResp<T> = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+};
 
-/* ====================== Helpers ====================== */
-function normalizePayload<T extends { unit?: any; unit_cost?: any }>(p: T): T {
-  // Normaliza a string para evitar problemas con serializers que esperan string/decimal
+/* Helpers */
+const normalizePayload = <T extends { unit?: any; unit_cost?: any; visit?: any }>(p: T): T => {
   const out: any = { ...p };
   if (out.unit !== undefined && out.unit !== null) out.unit = String(out.unit);
   if (out.unit_cost !== undefined && out.unit_cost !== null) out.unit_cost = String(out.unit_cost);
+  if (out.visit !== undefined && out.visit !== null) out.visit = Number(out.visit);
   return out;
-}
+};
 
-/** Calcula total localmente cuando unit representa cantidad y unit_cost el costo unitario */
+/** Total local (cantidad * costo) */
 export const computeTotal = (m: { unit?: number | string; unit_cost?: number | string }) =>
   (Number(m.unit) || 0) * (Number(m.unit_cost) || 0);
 
+const MaterialsApi: AxiosInstance = axios.create({
+  baseURL: `${API}/api/material-used/`, // plural + barra final
+});
+
 /* ====================== CRUD ====================== */
 
-// GET /materials-used/
-export const getAllMaterialsUsed = () =>
-  MaterialsUsedApi.get<MaterialUsed[]>("/");
+// GET /api/materials-used/?page=&page_size=&ordering=&search=
+export const getMaterialsUsed = async (params: Record<string, any> = {}) => {
+  const res = await MaterialsApi.get<PageResp<MaterialUsed>>("", { params });
+  return res.data;
+};
 
-// GET /materials-used/{id}/
+// GET /api/materials-used/{id}/
 export const getMaterialUsed = (id: number | string) =>
-  MaterialsUsedApi.get<MaterialUsed>(`${id}/`);
+  MaterialsApi.get<MaterialUsed>(`${id}/`);
 
-// POST /materials-used/  (incluye visit obligatoriamente)
+// POST /api/materials-used/
 export const createMaterialUsed = (payload: CreateMaterialUsedDTO) =>
-  MaterialsUsedApi.post<MaterialUsed>("/", normalizePayload(payload));
+  MaterialsApi.post<MaterialUsed>("", normalizePayload(payload));
 
-// PUT /materials-used/{id}/  (incluye visit si tu backend lo exige para PUT)
-export const updateMaterialUsed = (
-  id: number | string,
-  payload: UpdateMaterialUsedDTO
-) => MaterialsUsedApi.put<MaterialUsed>(`${id}/`, normalizePayload(payload));
+// PUT /api/materials-used/{id}/
+export const updateMaterialUsed = (id: number | string, payload: UpdateMaterialUsedDTO) =>
+  MaterialsApi.put<MaterialUsed>(`${id}/`, normalizePayload(payload));
 
-// PATCH /materials-used/{id}/  (alternativa más flexible)
-export const patchMaterialUsed = (
-  id: number | string,
-  payload: UpdateMaterialUsedDTO
-) => MaterialsUsedApi.patch<MaterialUsed>(`${id}/`, normalizePayload(payload));
+// PATCH /api/materials-used/{id}/
+export const patchMaterialUsed = (id: number | string, payload: UpdateMaterialUsedDTO) =>
+  MaterialsApi.patch<MaterialUsed>(`${id}/`, normalizePayload(payload));
 
-// DELETE /materials-used/{id}/
+// DELETE /api/materials-used/{id}/
 export const deleteMaterialUsed = (id: number | string) =>
-  MaterialsUsedApi.delete<void>(`${id}/`);
+  MaterialsApi.delete<void>(`${id}/`);
 
 /* ====================== RELACIONALES ====================== */
 
-export const getMaterialsUsedByVisit = (visitId: number | string, config?: AxiosRequestConfig) =>
-  MaterialsUsedApi.get<MaterialUsed[]>("/", { params: { visit: visitId }, ...(config || {}) });
-
-export const createMaterialUsedByVisit = (
+// GET paginado /api/materials-used/by-visit/{visit_id}/?page=&page_size=
+export const getMaterialsUsedByVisitPaged = async (
   visitId: number | string,
-  payload: Omit<CreateMaterialUsedDTO, "visit">
-) =>
-  MaterialsUsedApi.post<MaterialUsed>(
-    "/",
-    normalizePayload({ ...payload, visit: Number(visitId) })
-  );
+  params: Record<string, any> = {}
+) => {
+  const res = await MaterialsApi.get<PageResp<MaterialUsed>>(`by-visit/${visitId}/`, { params });
+  return res.data;
+};
 
+/** Helper: trae TODAS las páginas (útil si no quieres paginar en el modal) */
+export const getMaterialsUsedByVisitAll = async (
+  visitId: number | string,
+  params: Record<string, any> = {}
+): Promise<MaterialUsed[]> => {
+  const first = await getMaterialsUsedByVisitPaged(visitId, {
+    page: 1,
+    page_size: params.page_size ?? 50,
+    ...params,
+  });
+  let acc: MaterialUsed[] = [...first.results];
+  let next = first.next;
+  while (next) {
+    const res = await axios.get<PageResp<MaterialUsed>>(next);
+    acc = acc.concat(res.data.results);
+    next = res.data.next;
+  }
+  return acc;
+};
+
+/* ====================== ACCIONES ====================== */
+
+// POST /api/materials-used/{id}/restore/
 export const restoreMaterialUsed = (id: number | string) =>
-  MaterialsUsedApi.post<MaterialUsed>(`${id}/restore/`);
+  MaterialsApi.post<MaterialUsed>(`${id}/restore/`);

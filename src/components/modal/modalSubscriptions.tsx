@@ -5,8 +5,8 @@ import { getAllPlans, type Plan } from "../../api/plan and subscriptions/plan.ap
 import { getAllCustomers, type Customer } from "../../api/customer/customer.api";
 
 export type SubscriptionFormValues = {
-  customer: string;     // id como string para facilitar inputs controlados
-  plan: string;         // id como string
+  customer: string;
+  plan: string;
   start_date: string;   // YYYY-MM-DD
   status: string;       // active | inactive | cancelled
   notes?: string;
@@ -15,7 +15,7 @@ export type SubscriptionFormValues = {
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  initial?: Partial<SubscriptionFormValues>;  // si hay -> modo editar
+  initial?: Partial<SubscriptionFormValues>;
   onSubmit: (values: SubscriptionFormValues) => Promise<void>;
   title?: string;
   submitLabel?: string;
@@ -27,8 +27,13 @@ const STATUS_OPTIONS = [
   { value: "cancelled", label: "Cancelada" },
 ];
 
-// Si tu DRF devuelve paginado, descomenta y usa esta util en loadCatalogs()
-// const unwrapList = <T,>(data: any): T[] => Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
+/** Acepta AxiosResponse, objeto paginado DRF, array crudo… y devuelve siempre un array */
+function unwrapArray<T = any>(resOrData: any): T[] {
+  const d = resOrData?.data ?? resOrData;
+  if (Array.isArray(d)) return d as T[];
+  if (Array.isArray(d?.results)) return d.results as T[];
+  return [];
+}
 
 export default function SubscriptionModal({
   isOpen,
@@ -53,7 +58,7 @@ export default function SubscriptionModal({
   const [loadingCats, setLoadingCats] = useState(false);
   const [catsError, setCatsError] = useState<string | null>(null);
 
-  // precalcular hoy una sola vez
+  // hoy (estable)
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   useEffect(() => {
@@ -68,6 +73,7 @@ export default function SubscriptionModal({
     setStartDate(initial?.start_date ?? today);
     setStatus(initial?.status ?? "active");
     setNotes(initial?.notes ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   const loadCatalogs = async () => {
@@ -75,20 +81,16 @@ export default function SubscriptionModal({
     setCatsError(null);
     try {
       const [pRes, cRes] = await Promise.all([getAllPlans(), getAllCustomers()]);
-      // Si tus endpoints son NO paginados (array directo):
-      const pList = (pRes.data ?? []) as Plan[];
-      const cList = (cRes.data ?? []) as Customer[];
 
-      // Si fueran paginados, usa:
-      // const pList = unwrapList<Plan>(pRes.data);
-      // const cList = unwrapList<Customer>(cRes.data);
+      const pList = unwrapArray<Plan>(pRes);
+      const cList = unwrapArray<Customer>(cRes);
 
-      // ordena por nombre
-      pList.sort((a, b) => a.name.localeCompare(b.name));
-      cList.sort((a, b) => a.name.localeCompare(b.name));
+      // sort SIEMPRE sobre copias, nunca en el valor original por si no es array real
+      const pSorted = [...pList].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      const cSorted = [...cList].sort((a, b) => String(a.name).localeCompare(String(b.name)));
 
-      setPlans(pList);
-      setCustomers(cList);
+      setPlans(pSorted);
+      setCustomers(cSorted);
     } catch (err: any) {
       console.error("Catálogos error:", err?.response?.data || err);
       setCatsError(
@@ -96,6 +98,8 @@ export default function SubscriptionModal({
           err?.message ||
           "No se pudieron cargar planes/clientes."
       );
+      setPlans([]);
+      setCustomers([]);
     } finally {
       setLoadingCats(false);
     }
@@ -144,7 +148,6 @@ export default function SubscriptionModal({
           </p>
         </div>
 
-        {/* Aviso de error/estado catálogos */}
         {catsError && (
           <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
             {catsError}
@@ -152,13 +155,13 @@ export default function SubscriptionModal({
         )}
 
         <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2">
-          {/* Cliente (select por nombre) */}
+          {/* Cliente */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
               Cliente *
             </label>
             <select
-              disabled={loadingCats || Boolean(initial?.customer)} // 🔒 Deshabilitado si es edición
+              disabled={loadingCats || Boolean(initial?.customer)} // 🔒 en edición no se cambia
               value={customer}
               onChange={(e) => setCustomer(e.target.value)}
               className={`h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 ${
@@ -174,7 +177,7 @@ export default function SubscriptionModal({
             </select>
           </div>
 
-          {/* Plan (select por nombre) */}
+          {/* Plan */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
               Plan *

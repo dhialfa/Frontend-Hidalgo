@@ -1,19 +1,15 @@
+// src/components/modal/MaterialsUsedModal.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Modal } from "../ui/modal";
+import Pagination from "../ui/Pagination";
 import {
-  getMaterialsUsedByVisit,
-  createMaterialUsedByVisit,
-  updateMaterialUsed,
+  getMaterialsUsedByVisitPaged,
+  createMaterialUsed,
+  patchMaterialUsed,
   deleteMaterialUsed,
+  type MaterialUsed,
+  type PageResp,
 } from "../../api/visit/materials-used.api";
-
-type MU = {
-  id: number;
-  visit: number;
-  description: string;
-  unit: string | number;       // cantidad
-  unit_cost: string | number;  // costo unitario
-};
 
 type Props = {
   isOpen: boolean;
@@ -33,9 +29,12 @@ function toNum(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function crc(n: number) {
-  return `₡ ${n.toFixed(2)}`;
-}
+const money = new Intl.NumberFormat("es-CR", {
+  style: "currency",
+  currency: "CRC",
+  maximumFractionDigits: 2,
+});
+const crc = (n: number) => money.format(n);
 
 const emptyForm: FormValues = {
   id: null,
@@ -45,73 +44,78 @@ const emptyForm: FormValues = {
 };
 
 export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) {
-  // listado
+  // -------- Paginación/listado --------
   const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<MU[]>([]);
-  const [err, setErr] = useState<string | null>(null);
+  const [rows, setRows] = useState<MaterialUsed[]>([]);
+  const [count, setCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const totalPages = Math.max(1, Math.ceil(count / pageSize));
+  const [error, setError] = useState<string | null>(null);
 
-  // formulario
+  // -------- Formulario --------
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<FormValues>(emptyForm);
   const isEdit = form.id != null;
 
-  // título/descripcion (mismo patrón que PlanTasksCrudModal)
+  // -------- Textos --------
   const title = useMemo(
     () => (visitId ? `Materiales usados de la visita #${visitId}` : "Materiales usados"),
     [visitId]
   );
   const subtitle = useMemo(
-    () =>
-      isEdit
-        ? "Actualiza los datos del material seleccionado."
-        : "Registra materiales consumidos en esta visita.",
+    () => (isEdit ? "Actualiza los datos del material seleccionado." : "Registra materiales consumidos en esta visita."),
     [isEdit]
   );
 
   const resetForm = () => setForm(emptyForm);
 
+  // -------- Cargar página --------
   const load = async () => {
     if (!visitId || !isOpen) return;
     setLoading(true);
-    setErr(null);
+    setError(null);
     try {
-      const res = await getMaterialsUsedByVisit(visitId); // array directo
-      setList(res.data as MU[]);
+      const data: PageResp<MaterialUsed> = await getMaterialsUsedByVisitPaged(visitId, {
+        page,
+        page_size: pageSize,
+        ordering: "-id", // opcional: últimos primero
+      });
+      setRows(data.results ?? []);
+      setCount(Number(data.count ?? 0));
     } catch (e: any) {
-      setErr(e?.response?.data?.detail || "Error al cargar materiales usados.");
       console.error("materials load error:", e?.response?.data || e);
+      setError(e?.response?.data?.detail || "Error al cargar materiales usados.");
     } finally {
       setLoading(false);
     }
   };
 
+  // Reset y carga al abrir/cambiar visita
   useEffect(() => {
     if (!isOpen) return;
-    // reset al abrir
-    setErr(null);
+    setError(null);
     resetForm();
-    void load();
+    setPage(1); // siempre iniciar en página 1 al abrir/cambiar visita
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, visitId]);
 
-  // Total general
+  // Cargar cuando cambie page/pageSize
+  useEffect(() => {
+    if (!isOpen) return;
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize, isOpen]);
+
+  // -------- Totales --------
   const grandTotal = useMemo(
-    () =>
-      list.reduce((acc, m) => {
-        const qty = toNum(m.unit);
-        const unitCost = toNum(m.unit_cost);
-        return acc + qty * unitCost;
-      }, 0),
-    [list]
+    () => rows.reduce((acc, m) => acc + toNum(m.unit) * toNum(m.unit_cost), 0),
+    [rows]
   );
 
-  // Vista previa total de la línea en edición/creación
-  const linePreview = useMemo(() => {
-    const qty = toNum(form.unit);
-    const unitCost = toNum(form.unit_cost);
-    return qty * unitCost;
-  }, [form.unit, form.unit_cost]);
+  const linePreview = useMemo(() => toNum(form.unit) * toNum(form.unit_cost), [form.unit, form.unit_cost]);
 
+  // -------- CRUD --------
   const onSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     if (!visitId) return;
@@ -124,24 +128,26 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
     };
 
     setSaving(true);
-    setErr(null);
+    setError(null);
     try {
       if (isEdit && form.id != null) {
-        await updateMaterialUsed(form.id, payload as any);
+        await patchMaterialUsed(form.id, payload as any);
       } else {
-        await createMaterialUsedByVisit(visitId, payload as any);
+        await createMaterialUsed(payload as any);
+        // tras crear, vuelve a la página 1 para ver el nuevo primero (por ordering -id)
+        if (page !== 1) setPage(1);
       }
       await load();
       resetForm();
     } catch (e: any) {
       console.error("materials submit error:", e?.response?.data || e);
-      setErr(e?.response?.data?.detail || "No se pudo guardar el material.");
+      setError(e?.response?.data?.detail || "No se pudo guardar el material.");
     } finally {
       setSaving(false);
     }
   };
 
-  const onEdit = (m: MU) => {
+  const onEdit = (m: MaterialUsed) => {
     setForm({
       id: m.id,
       description: m.description ?? "",
@@ -153,14 +159,18 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
   const onDelete = async (id: number) => {
     if (!confirm("¿Eliminar este material?")) return;
     setSaving(true);
-    setErr(null);
+    setError(null);
     try {
       await deleteMaterialUsed(id);
+      // Si eliminamos el último de la página y no es la primera, retrocede una página
+      if (rows.length === 1 && page > 1) {
+        setPage((p) => Math.max(1, p - 1));
+      }
       await load();
       if (form.id === id) resetForm();
     } catch (e: any) {
       console.error("materials delete error:", e?.response?.data || e);
-      setErr(e?.response?.data?.detail || "No se pudo eliminar.");
+      setError(e?.response?.data?.detail || "No se pudo eliminar.");
     } finally {
       setSaving(false);
     }
@@ -190,9 +200,7 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
           <div className="lg:col-span-3">
             <div className="rounded-xl border border-gray-200 dark:border-white/10">
               <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5 dark:border-white/10">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                  Lista de materiales
-                </span>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Lista de materiales</span>
                 <button
                   onClick={resetForm}
                   className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
@@ -208,7 +216,7 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
                       <div key={i} className="h-11 rounded-lg bg-gray-100 dark:bg-white/10 animate-pulse" />
                     ))}
                   </div>
-                ) : list.length === 0 ? (
+                ) : rows.length === 0 ? (
                   <div className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
                     No hay materiales registrados en esta visita.
                   </div>
@@ -224,24 +232,16 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-white/10">
-                      {list.map((m) => {
+                      {rows.map((m) => {
                         const qty = toNum(m.unit);
                         const unitCost = toNum(m.unit_cost);
                         const total = qty * unitCost;
                         return (
                           <tr key={m.id} className="hover:bg-gray-50/60 dark:hover:bg-white/5">
-                            <td className="px-4 py-2 font-medium text-gray-800 dark:text-gray-100">
-                              {m.description}
-                            </td>
-                            <td className="px-4 py-2 text-gray-700 dark:text-gray-200">
-                              {qty}
-                            </td>
-                            <td className="px-4 py-2 text-gray-700 dark:text-gray-200">
-                              {crc(unitCost)}
-                            </td>
-                            <td className="px-4 py-2 text-gray-700 dark:text-gray-200">
-                              {crc(total)}
-                            </td>
+                            <td className="px-4 py-2 font-medium text-gray-800 dark:text-gray-100">{m.description}</td>
+                            <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{qty}</td>
+                            <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{crc(unitCost)}</td>
+                            <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{crc(total)}</td>
                             <td className="px-4 py-2">
                               <div className="flex items-center justify-end gap-2">
                                 <button
@@ -268,19 +268,33 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
                         <td className="px-4 py-2 text-right font-semibold text-gray-700 dark:text-gray-200" colSpan={3}>
                           Total materiales
                         </td>
-                        <td className="px-4 py-2 font-semibold text-gray-900 dark:text-gray-100">
-                          {crc(grandTotal)}
-                        </td>
-                        <td></td>
+                        <td className="px-4 py-2 font-semibold text-gray-900 dark:text-gray-100">{crc(grandTotal)}</td>
+                        <td />
                       </tr>
                     </tfoot>
                   </table>
                 )}
               </div>
 
-              {err && (
+              {/* Paginación */}
+              <div className="px-4 py-3 border-t border-gray-100 dark:border-white/10">
+                <Pagination
+                  page={page}
+                  totalPages={totalPages}
+                  onPageChange={setPage}
+                  pageSize={pageSize}
+                  onPageSizeChange={(n) => {
+                    setPageSize(n);
+                    setPage(1);
+                  }}
+                  pageSizeOptions={[5, 10, 20, 50]}
+                />
+                <div className="mt-1 text-xs text-gray-500">Total: {count}</div>
+              </div>
+
+              {error && (
                 <div className="border-t border-red-100 px-4 py-2 text-sm text-red-600 dark:border-red-900/30 dark:text-red-400">
-                  {err}
+                  {error}
                 </div>
               )}
             </div>

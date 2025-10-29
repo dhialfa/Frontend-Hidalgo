@@ -1,7 +1,8 @@
+// src/components/modal/EvidencesModal.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Modal } from "../ui/modal";
 import {
-  getEvidencesByVisit,
+  getEvidencesByVisitAll, // ← sin paginación para el carrusel
   createEvidence,
   updateEvidence,
   deleteEvidence,
@@ -39,7 +40,7 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
   const [list, setList] = useState<Evidence[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
-  // carrusel
+  // carrusel (NO paginado)
   const items = useMemo(() => toCarouselItems(list), [list]);
   const hasItems = items.length > 0;
   const [activeIdx, setActiveIdx] = useState(0);
@@ -50,25 +51,23 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
   const [form, setForm] = useState<FormValues>(emptyForm);
   const isEdit = form.id != null;
 
-  // título dinámico (mismo patrón que PlanTasksCrudModal)
   const title = useMemo(() => {
     if (!formOpen) return visitId ? `Evidencias de la visita #${visitId}` : "Evidencias";
     return isEdit ? "Editar evidencia" : "Añadir evidencias";
   }, [formOpen, isEdit, visitId]);
 
-  // cargar
+  // cargar sin paginación
   const load = async () => {
     if (!visitId || !isOpen) return;
     setLoading(true);
     setErr(null);
     try {
-      const res = await getEvidencesByVisit(visitId);
-      const data = Array.isArray(res.data) ? res.data : (res.data as any)?.results ?? [];
-      setList(data);
+      const data = await getEvidencesByVisitAll(visitId);
+      setList(Array.isArray(data) ? data : []);
       setActiveIdx(0);
     } catch (e: any) {
       setErr(e?.response?.data?.detail || "Error al cargar evidencias.");
-      console.error("getEvidencesByVisit:", e?.response?.data || e);
+      console.error("getEvidencesByVisitAll:", e?.response?.data || e);
     } finally {
       setLoading(false);
     }
@@ -76,7 +75,6 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
 
   useEffect(() => {
     if (!isOpen) return;
-    // reset estado al abrir
     setFormOpen(false);
     setForm(emptyForm);
     setErr(null);
@@ -117,24 +115,18 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
     setErr(null);
     try {
       if (isEdit && form.id != null) {
-        // EDITAR: reemplazo opcional con el primer archivo si hay
         const file = form.files[0];
         await updateEvidence(form.id, {
           visit: visitId,
           description: form.description?.trim() || undefined,
-          file: file ?? undefined, // si no se envía, backend mantiene archivo actual
+          file: file ?? undefined,
         });
       } else {
-        // CREAR: subir varias imágenes (una request por archivo)
         const desc = form.description?.trim() || undefined;
         const tasks = form.files.map((file) =>
           createEvidence({ visit: visitId, file, description: desc })
         );
-        const results = await Promise.allSettled(tasks);
-        const ko = results.filter((r) => r.status === "rejected").length;
-        if (ko > 0) {
-          console.warn(`Algunas imágenes fallaron: ${ko}/${results.length}`);
-        }
+        await Promise.allSettled(tasks);
       }
       await load();
       cancelForm();
@@ -396,20 +388,13 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
                     <div className="mt-1 grid grid-cols-3 gap-2 md:grid-cols-4">
                       {form.files.map((f, i) => (
                         <div key={i} className="group relative h-28 w-full overflow-hidden rounded border border-gray-200 dark:border-white/10">
-                          <img
-                            src={URL.createObjectURL(f)}
-                            alt={f.name}
-                            className="h-full w-full object-cover"
-                          />
+                          <img src={URL.createObjectURL(f)} alt={f.name} className="h-full w-full object-cover" />
                           <div className="absolute inset-0 hidden items-end justify-end gap-1 p-1 group-hover:flex">
                             <button
                               type="button"
                               title="Quitar"
                               onClick={() =>
-                                setForm((s) => ({
-                                  ...s,
-                                  files: s.files.filter((_, idx) => idx !== i),
-                                }))
+                                setForm((s) => ({ ...s, files: s.files.filter((_, idx) => idx !== i) }))
                               }
                               className="rounded bg-black/50 px-1.5 py-0.5 text-[10px] text-white"
                             >
