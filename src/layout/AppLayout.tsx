@@ -1,10 +1,15 @@
+// src/layout/AppLayout.tsx
 import { SidebarProvider, useSidebar } from "../context/SidebarContext";
 import { Outlet } from "react-router";
 import AppHeader from "./AppHeader";
 import Backdrop from "./Backdrop";
 import AppSidebar from "./AppSidebar";
+import { useAutoLogout } from "../hooks/useAutoLogout";
 
 const LayoutContent: React.FC = () => {
+  // activa el control de inactividad para todo el layout
+  useAutoLogout();
+
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
 
   return (

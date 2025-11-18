@@ -1,4 +1,3 @@
-// src/components/plans/PlansGrid.tsx
 import { useMemo, useState } from "react";
 import Badge from "../ui/badge/Badge";
 import { Modal } from "../ui/modal";
@@ -8,14 +7,12 @@ import Pagination from "../ui/Pagination";
 import { usePager } from "../../hooks/usePager";
 
 import {
-  // ⬇️ Debes exponer un endpoint paginado, análogo a getCustomers
-  //    Firma esperada por usePager: (params) => Promise<AxiosResponse<DRFPage<Plan>>>
   getPlans, // listado paginado
   createPlan,
   updatePlan,
   deletePlan,
   type Plan,
-} from "../../api/plan and subscriptions/plan.api";
+} from "../../api/plan and subscriptions/plan.api"; // <-- deja este path si tu archivo real está aquí
 
 export default function PlansGrid() {
   // -------- Paginación + filtros (server-side) ----------
@@ -33,8 +30,8 @@ export default function PlansGrid() {
     setParams,
     reload,
   } = usePager<Plan>(getPlans, {
-    ordering: "name", // orden inicial desde backend
-    page_size: 12, // cards por página
+    ordering: "name",
+    page_size: 12,
   });
 
   // -------- UI state ----------
@@ -78,7 +75,6 @@ export default function PlansGrid() {
   /* ------------------- CRUD PLANES ------------------- */
   const onCreateSubmit = async (values: PlanFormValues) => {
     await createPlan(values);
-    // tras crear, ir a página 1 para que el nuevo aparezca (según ordering)
     setPage(1);
     await reload();
   };
@@ -86,7 +82,7 @@ export default function PlansGrid() {
   const onEditSubmit = async (values: PlanFormValues) => {
     if (!selected) return;
     await updatePlan(selected.id, values);
-    await reload(); // recarga la página actual
+    await reload();
   };
 
   const openEdit = (row: Plan) => {
@@ -107,7 +103,6 @@ export default function PlansGrid() {
     setDeletingIds((s) => new Set(s).add(id));
     try {
       await deletePlan(id);
-      // si la página queda vacía, retrocede
       if (rows.length - 1 <= 0 && page > 1) setPage(page - 1);
       await reload();
     } catch {
@@ -145,7 +140,6 @@ export default function PlansGrid() {
 
   const currentOrdering = String(params?.ordering || "name");
   const setOrdering = (field: string) => {
-    // Si re selecciona el mismo campo, alterna asc/desc
     const base = currentOrdering.replace("-", "");
     const next = base === field && !currentOrdering.startsWith("-") ? `-${field}` : field;
     setParams((p: any) => ({ ...p, ordering: next }));
@@ -319,7 +313,12 @@ export default function PlansGrid() {
       />
 
       {/* --- Modal CRUD Tareas --- */}
-      <PlanTasksCrudModal isOpen={tasksOpen} onClose={closeTasks} plan={taskPlan} />
+      <PlanTasksCrudModal
+        key={taskPlan?.id ?? 0}   // ⬅️ fuerza remount al cambiar de plan
+        isOpen={tasksOpen}
+        onClose={closeTasks}
+        plan={taskPlan}
+      />
 
       {/* Confirmación eliminar */}
       <Modal isOpen={confirmOpen} onClose={() => setConfirmOpen(false)} className="max-w-md p-6">

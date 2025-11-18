@@ -1,5 +1,6 @@
 // src/api/plan/plan-subscriptions.api.ts
 import axios, { AxiosInstance } from "axios";
+import { getAccessToken } from "../auth/auth.api"; // 👈 importante: ruta relativa a src/api/auth.ts
 
 const URL = import.meta.env?.VITE_API_URL ?? "http://localhost:8000";
 
@@ -65,19 +66,33 @@ const PlanSubsApi: AxiosInstance = axios.create({
   baseURL: `${URL}/api/plan-subscriptions/`, // barra final importante
 });
 
+// 🔐 Interceptor: mete el JWT en TODOS los requests de este módulo
+PlanSubsApi.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token) {
+    const cfg: any = config;
+    cfg.headers = cfg.headers || {};
+    cfg.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 /* =======================
    PAGINADO general
 ======================= */
 
 /** GET /api/plan-subscriptions/?page=&page_size=&search=&ordering=&status=&customer=&plan= */
-export const getPlanSubscriptions = async (params: ListPlanSubsParams = {}) => {
+export const getPlanSubscriptions = async (
+  params: ListPlanSubsParams = {},
+) => {
   const res = await PlanSubsApi.get<PageResp<PlanSubscription>>("", { params });
-  return res.data; // ⬅️ devolvemos data (no AxiosResponse)
+  return res.data;
 };
 
 /** Navegar next/previous de DRF */
 export const getPlanSubscriptionsByUrl = async (url: string) => {
-  const res = await axios.get<PageResp<PlanSubscription>>(url);
+  // usamos PlanSubsApi para que también lleve Authorization
+  const res = await PlanSubsApi.get<PageResp<PlanSubscription>>(url);
   return res.data;
 };
 
@@ -100,7 +115,7 @@ export const createPlanSubscription = (payload: CreatePlanSubscriptionDTO) =>
 
 export const partialUpdatePlanSubscription = (
   id: number | string,
-  payload: UpdatePlanSubscriptionDTO
+  payload: UpdatePlanSubscriptionDTO,
 ) => PlanSubsApi.patch<PlanSubscription>(`${id}/`, payload);
 
 export const deletePlanSubscription = (id: number | string) =>
@@ -113,12 +128,12 @@ export const restorePlanSubscription = (id: number | string) =>
    Endpoints personalizados
 ======================= */
 
-/** NO paginado (como lo tenías):
+/** NO paginado:
  *  GET /api/plan-subscriptions/by-customer/{customer_id}/?status=active
  */
 export const getSubscriptionsByCustomer = (
   customerId: number | string,
-  status?: string
+  status?: string,
 ) =>
   PlanSubsApi.get<PlanSubscription[]>(`by-customer/${customerId}/`, {
     params: status ? { status } : {},
@@ -130,13 +145,17 @@ export const getSubscriptionsByCustomer = (
  */
 export const createSubscriptionByCustomer = (
   customerId: number | string,
-  payload: Omit<CreatePlanSubscriptionDTO, "customer">
-) => PlanSubsApi.post<PlanSubscription>(`by-customer/${customerId}/`, payload);
+  payload: Omit<CreatePlanSubscriptionDTO, "customer">,
+) =>
+  PlanSubsApi.post<PlanSubscription>(`by-customer/${customerId}/`, payload);
 
 /** NO paginado:
  *  GET /api/plan-subscriptions/by-plan/{plan_id}/?status=active
  */
-export const getSubscriptionsByPlan = (planId: number | string, status?: string) =>
+export const getSubscriptionsByPlan = (
+  planId: number | string,
+  status?: string,
+) =>
   PlanSubsApi.get<PlanSubscription[]>(`by-plan/${planId}/`, {
     params: status ? { status } : {},
   });
@@ -146,8 +165,9 @@ export const getSubscriptionsByPlan = (planId: number | string, status?: string)
  */
 export const createSubscriptionByPlan = (
   planId: number | string,
-  payload: Omit<CreatePlanSubscriptionDTO, "plan">
-) => PlanSubsApi.post<PlanSubscription>(`by-plan/${planId}/`, payload);
+  payload: Omit<CreatePlanSubscriptionDTO, "plan">,
+) =>
+  PlanSubsApi.post<PlanSubscription>(`by-plan/${planId}/`, payload);
 
 /** Acción rápida opcional */
 export const cancelSubscription = (id: number | string) =>
@@ -160,11 +180,11 @@ export const cancelSubscription = (id: number | string) =>
 /** GET paginado: /api/plan-subscriptions/by-customer/{customer_id}/?page=&page_size=&search=&ordering=&status= */
 export const getSubscriptionsByCustomerPaged = async (
   customerId: number | string,
-  params: Omit<ListPlanSubsParams, "customer" | "plan"> = {}
+  params: Omit<ListPlanSubsParams, "customer" | "plan"> = {},
 ) => {
   const res = await PlanSubsApi.get<PageResp<PlanSubscription>>(
     `by-customer/${customerId}/`,
-    { params }
+    { params },
   );
   return res.data;
 };
@@ -172,11 +192,11 @@ export const getSubscriptionsByCustomerPaged = async (
 /** GET paginado: /api/plan-subscriptions/by-plan/{plan_id}/?page=&page_size=&search=&ordering=&status= */
 export const getSubscriptionsByPlanPaged = async (
   planId: number | string,
-  params: Omit<ListPlanSubsParams, "customer" | "plan"> = {}
+  params: Omit<ListPlanSubsParams, "customer" | "plan"> = {},
 ) => {
   const res = await PlanSubsApi.get<PageResp<PlanSubscription>>(
     `by-plan/${planId}/`,
-    { params }
+    { params },
   );
   return res.data;
 };

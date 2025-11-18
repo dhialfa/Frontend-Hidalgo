@@ -1,5 +1,6 @@
-// ../../api/plan and subscriptions/plan.api
+// src/api/plan and subscriptions/plan.api.ts
 import axios, { AxiosInstance } from "axios";
+import { getAccessToken } from "../auth/auth.api"; // 👈 ajusta la ruta si tu auth.ts está en otro lado
 
 /** Usa tu .env: VITE_API_URL=http://localhost:8000 */
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -40,6 +41,17 @@ export type PlanListParams = {
 const PlanApi: AxiosInstance = axios.create({
   baseURL: `${API}/api/plans/`, // ⚠️ barra final como en users.ts
   // timeout: 15000,
+});
+
+// 🔐 Interceptor: mete el JWT en TODOS los requests de este módulo
+PlanApi.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token) {
+    const cfg: any = config;
+    cfg.headers = cfg.headers || {};
+    cfg.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
 });
 
 /* =========================

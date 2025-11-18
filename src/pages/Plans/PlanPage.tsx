@@ -6,7 +6,7 @@ export default function CustomerTable() {
   return (
     <>
       <PageMeta
-        title="Clientes"
+        title="Planes"
         description=""
       />
       <PageBreadcrumb pageTitle="Planes" />
