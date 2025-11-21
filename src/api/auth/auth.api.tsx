@@ -73,6 +73,14 @@ export const getLastActivity = (): number | null => {
   return Number.isNaN(n) ? null : n;
 };
 
+/** Indica si la sesión está vencida por inactividad */
+export const hasSessionExpiredByInactivity = (): boolean => {
+  const last = getLastActivity();
+  if (!last) return false; // si no hay registro, no forzamos expiración aquí
+  const diff = Date.now() - last;
+  return diff > INACTIVITY_LIMIT_MS;
+};
+
 /** Guarda tokens + usuario y registra primera actividad */
 export const storeAuth = (auth: AuthResponse) => {
   localStorage.setItem("access", auth.access);
@@ -105,9 +113,21 @@ export const getCurrentUser = (): User | null => {
   }
 };
 
+/**
+ * Devuelve true solo si:
+ *  - hay access token
+ *  - y NO ha vencido el tiempo de inactividad
+ */
 export const isAuthenticated = (): boolean => {
   const token = getAccessToken();
-  return !!token;
+  if (!token) return false;
+
+  if (hasSessionExpiredByInactivity()) {
+    clearAuth();
+    return false;
+  }
+
+  return true;
 };
 
 /* ======================================
@@ -119,18 +139,35 @@ export const isAuthenticated = (): boolean => {
  * - Añade el access token en Authorization.
  * - Si el backend devuelve 401 (token_not_valid / expirado), intenta refrescar usando el refresh.
  * - Reintenta automáticamente la request ORIGINAL una sola vez.
+ * - Si la sesión vence por inactividad, limpia todo y redirige a /signin.
  */
 export const setupAuthInterceptors = (api: AxiosInstance) => {
   // Request: mete el access token en el header
-  api.interceptors.request.use((config) => {
-    const token = getAccessToken();
-    if (token) {
-      const cfg: any = config;
-      cfg.headers = cfg.headers || {};
-      cfg.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  });
+  api.interceptors.request.use(
+    (config) => {
+      // 🔒 Check de inactividad ANTES de mandar la request
+      if (hasSessionExpiredByInactivity()) {
+        clearAuth();
+        window.location.href = "/signin";
+        return Promise.reject(
+          new Error("Sesión expirada por inactividad")
+        );
+      }
+
+      const token = getAccessToken();
+      if (token) {
+        const cfg: any = config;
+        cfg.headers = cfg.headers || {};
+        cfg.headers.Authorization = `Bearer ${token}`;
+      }
+
+      // si la request se manda, contamos como actividad del usuario
+      touchActivity();
+
+      return config;
+    },
+    (err) => Promise.reject(err)
+  );
 
   // Response: maneja 401 y refresca el token si es posible
   api.interceptors.response.use(

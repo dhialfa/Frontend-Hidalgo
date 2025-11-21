@@ -18,7 +18,7 @@ export interface User {
   last_name?: string;
   phone?: string;
   rol?: string;
-  is_staff?: boolean;
+  is_staff: boolean;
   is_active?: boolean;
   is_superuser?: boolean;
   last_login?: string;

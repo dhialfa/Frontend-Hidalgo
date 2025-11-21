@@ -1,22 +1,23 @@
 import { useEffect, useState } from "react";
 import { Modal } from "../ui/modal/index"; 
+import { useAuth } from "../../auth/AuthContext"; // 👈 importa el contexto
 
 export type UserFormValues = {
   username: string;
   email: string;
-  password?: string;     
+  password?: string;
   first_name?: string;
   last_name?: string;
   phone?: string;
-  rol?: string;
-  is_active: boolean;
+  is_active: boolean;   // se maneja interno, no en UI
+  is_staff: boolean;    // admin
 };
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
   initial?: Partial<UserFormValues> & { id?: number | string };
-  onSubmit: (values: UserFormValues, id?: number | string) => Promise<void>;   
+  onSubmit: (values: UserFormValues, id?: number | string) => Promise<void>;
   title?: string;
   submitLabel?: string;
 };
@@ -29,7 +30,6 @@ export default function UserModal({
   title = "Añadir usuario",
   submitLabel = "Guardar usuario",
 }: Props) {
-  // CHANGE: basar edición en que exista id
   const isEdit = initial?.id != null;
 
   const [saving, setSaving] = useState(false);
@@ -40,17 +40,22 @@ export default function UserModal({
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
-  const [rol, setRol] = useState("");
 
+  // 👇 Estado interno para is_active (no se muestra)
   const [isActive, setIsActive] = useState(true);
+
+  // 👇 Estado del checkbox admin
+  const [isStaff, setIsStaff] = useState(false);
 
   const [showPassword, setShowPassword] = useState(false);
 
-  // password handling
-  const [changePassword, setChangePassword] = useState(!isEdit); // en create, true por defecto
+  const [changePassword, setChangePassword] = useState(!isEdit);
   const [password, setPassword] = useState("");
 
-  // Cargar/Resetear el formulario cuando se abre o cambia "initial"
+  // 👉 Rol del usuario logueado
+  const { role } = useAuth();
+  const isCurrentAdmin = role === "admin";
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -60,18 +65,20 @@ export default function UserModal({
     setFirstName(initial?.first_name ?? "");
     setLastName(initial?.last_name ?? "");
     setPhone(initial?.phone ?? "");
-    setRol(initial?.rol ?? "");
 
+    // Cargar estado (aunque no se edite en UI)
     setIsActive(initial?.is_active ?? true);
 
-    // CHANGE: resetear ojo y flags al abrir
+    // Cargar admin del usuario que se está editando
+    setIsStaff(initial?.is_staff ?? false);
+
     setShowPassword(false);
 
     if (isEdit) {
-      setChangePassword(false); // en editar, por defecto no cambiar
+      setChangePassword(false);
       setPassword("");
     } else {
-      setChangePassword(true);  // en crear, password requerido
+      setChangePassword(true);
       setPassword("");
     }
   }, [isOpen, initial, isEdit]);
@@ -83,11 +90,17 @@ export default function UserModal({
   const handleSubmit = async () => {
     if (!username.trim()) return alert("El username es obligatorio");
     if (!email.trim()) return alert("El email es obligatorio");
-    if (!isEdit && !password.trim()) return alert("La contraseña es obligatoria");
-    // CHANGE: si en edición marcó cambiar contraseña pero está vacía
+    if (!isEdit && !password.trim())
+      return alert("La contraseña es obligatoria");
     if (isEdit && changePassword && !password.trim()) {
-      return alert("Escribe la nueva contraseña o desmarca 'Cambiar contraseña'.");
+      return alert(
+        "Escribe la nueva contraseña o desmarca 'Cambiar contraseña'."
+      );
     }
+
+    // 👇 Si el usuario logueado NO es admin, no puede cambiar is_staff
+    const originalIsStaff = initial?.is_staff ?? false;
+    const finalIsStaff = isCurrentAdmin ? isStaff : originalIsStaff;
 
     const payload: UserFormValues = {
       username: username.trim(),
@@ -95,15 +108,15 @@ export default function UserModal({
       first_name: firstName.trim() || undefined,
       last_name: lastName.trim() || undefined,
       phone: phone.trim() || undefined,
-      rol: rol.trim() || undefined,
-      is_active: isActive,
-      // incluye password solo si corresponde
-      ...(changePassword && password.trim() ? { password: password.trim() } : {}),
+      is_active: isActive,   // se envía, pero no se edita en UI
+      is_staff: finalIsStaff,
+      ...(changePassword && password.trim()
+        ? { password: password.trim() }
+        : {}),
     };
 
     try {
       setSaving(true);
-      // CHANGE: pasar el id cuando es edición
       await onSubmit(payload, isEdit ? initial!.id : undefined);
       handleClose();
     } catch (err: any) {
@@ -120,7 +133,11 @@ export default function UserModal({
   if (!isOpen) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} className="max-w-[700px] p-6 lg:p-10">
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      className="max-w-[700px] p-6 lg:p-10"
+    >
       <div className="flex flex-col px-2 overflow-y-auto custom-scrollbar">
         <div>
           <h5 className="mb-2 font-semibold text-gray-800 modal-title text-theme-xl dark:text-white/90 lg:text-2xl">
@@ -204,98 +221,82 @@ export default function UserModal({
             />
           </div>
 
-          {/* Rol */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Rol
-            </label>
-            <input
-              type="text"
-              value={rol}
-              onChange={(e) => setRol(e.target.value)}
-              className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
-              placeholder="admin, ventas, soporte…"
-            />
-          </div>
-
-          {/* Estado */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Estado
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-400">
+          {/* Admin (is_staff) - SOLO visible si el usuario logueado es admin */}
+          {isCurrentAdmin && (
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-400">
+                Administrador
+              </label>
               <input
                 type="checkbox"
-                checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
+                checked={isStaff}
+                onChange={(e) => setIsStaff(e.target.checked)}
                 className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-700"
               />
-              Activo
-            </label>
-          </div>
-
-          {/* Contraseña */}
-          <div className="sm:col-span-2">
-            {isEdit ? (
-              <div className="space-y-2">
-                <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-400">
-                  <input
-                    type="checkbox"
-                    checked={changePassword}
-                    onChange={(e) => setChangePassword(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-700"
-                  />
-                  Cambiar contraseña
-                </label>
-
-                {/* Input con botón Mostrar/Ocultar */}
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={!changePassword}
-                    className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 pr-16 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={!changePassword}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-600 hover:text-brand-500 dark:text-gray-300 disabled:opacity-40"
-                  >
-                    {showPassword ? "Ocultar" : "Mostrar"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                  Contraseña *
-                </label>
-
-                {/* Input con botón Mostrar/Ocultar */}
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 pr-16 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-600 hover:text-brand-500 dark:text-gray-300"
-                  >
-                    {showPassword ? "Ocultar" : "Mostrar"}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
+        {/* Contraseña */}
+        <div className="mt-6 sm:col-span-2">
+          {isEdit ? (
+            <div className="space-y-2">
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={changePassword}
+                  onChange={(e) => setChangePassword(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-700"
+                />
+                Cambiar contraseña
+              </label>
+
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={!changePassword}
+                  className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 pr-16 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  disabled={!changePassword}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-600 hover:text-brand-500 dark:text-gray-300 disabled:opacity-40"
+                >
+                  {showPassword ? "Ocultar" : "Mostrar"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+                Contraseña *
+              </label>
+
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 pr-16 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-600 hover:text-brand-500 dark:text-gray-300"
+                >
+                  {showPassword ? "Ocultar" : "Mostrar"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
         <div className="flex items-center gap-3 mt-6 sm:justify-end">
           <button
             onClick={handleClose}

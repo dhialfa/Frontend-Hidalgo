@@ -181,22 +181,6 @@ export default function CustomerModal({
               placeholder="San Carlos"
             />
           </div>
-
-          {/* Estado */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Estado
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-400">
-              <input
-                type="checkbox"
-                checked={active}
-                onChange={(e) => setActive(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-700"
-              />
-              Activo
-            </label>
-          </div>
         </div>
 
         <div className="flex items-center gap-3 mt-6 sm:justify-end">

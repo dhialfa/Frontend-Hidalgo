@@ -5,15 +5,14 @@ import {
   getAllPlanSubscriptions,
   type PlanSubscription,
 } from "../../api/plan and subscriptions/plan-subscriptions.api";
+import { useAuth } from "../../auth/AuthContext"; 
 
-/** =========================
- * Tipos de backend
- * ========================= */
+//Tipos de backend
 export type VisitStatus = "scheduled" | "in_progress" | "completed" | "canceled";
 
 export type VisitBackendDTO = {
   subscription: number;        // id (interno, no se muestra)
-  user: number;                // id (input visible)
+  user: number;                // id (tomado del usuario logueado)
   start: string;               // ISO con Z
   end: string | null;          // ISO con Z | null
   status: VisitStatus;
@@ -25,7 +24,7 @@ export type VisitBackendDTO = {
 export type VisitModalInitial = {
   id?: number | null;          // para saber si es edición
   subscriptionId?: number | null; // si viene preseleccionada
-  userId?: number | null;
+  userId?: number | null;      // (ya no se usa para edición, pero lo dejamos por compat)
   startISO?: string | null;    // ISO inicial si edita
   endISO?: string | null;
   status?: VisitStatus;
@@ -89,9 +88,12 @@ export default function VisitModal({
 }: Props) {
   const isEdit = !!initial.id;
 
+  // 👇 Usuario logueado desde AuthContext
+  const { user } = useAuth();
+  const loggedUserId = user?.id ?? null;
+
   // --------- estado principal (controlado por UI) ----------
   const [subscriptionId, setSubscriptionId] = useState<number | null>(initial.subscriptionId ?? null);
-  const [userId, setUserId] = useState<string>(initial.userId ? String(initial.userId) : "");
   const [status, setStatus] = useState<VisitStatus>(initial.status ?? "scheduled");
   const [siteAddress, setSiteAddress] = useState<string>(initial.site_address ?? "");
   const [notes, setNotes] = useState<string>(initial.notes ?? "");
@@ -119,7 +121,6 @@ export default function VisitModal({
   useEffect(() => {
     // Reset al abrir o cambiar initial
     setSubscriptionId(initial.subscriptionId ?? null);
-    setUserId(initial.userId ? String(initial.userId) : "");
     setStatus(initial.status ?? "scheduled");
     setSiteAddress(initial.site_address ?? "");
     setNotes(initial.notes ?? "");
@@ -193,16 +194,21 @@ export default function VisitModal({
   const canSave = useMemo(() => {
     return (
       !!subscriptionId &&
-      !!userId &&
+      !!loggedUserId &&                   
       !!startDate &&
       !!startTime &&
       (status !== "canceled" ||
         (status === "canceled" && cancelReason.trim().length > 0))
     );
-  }, [subscriptionId, userId, startDate, startTime, status, cancelReason]);
+  }, [subscriptionId, loggedUserId, startDate, startTime, status, cancelReason]);
 
   async function handleSave() {
     setFormError(null);
+
+    if (!loggedUserId) {
+      setFormError("No hay usuario autenticado para asociar a la visita.");
+      return;
+    }
 
     if (!canSave) {
       setFormError("Completa los campos requeridos antes de guardar.");
@@ -226,7 +232,7 @@ export default function VisitModal({
 
     const payload: VisitBackendDTO = {
       subscription: Number(subscriptionId),
-      user: Number(userId),
+      user: loggedUserId,          // 👈 SIEMPRE el usuario logueado
       start: startISO,
       end: endISO,
       status,
@@ -344,6 +350,8 @@ export default function VisitModal({
                           setSubscriptionId(s.id);
                           setCustomerName(s.customer_info?.name || "Sin cliente");
                           setSubCache((prev) => ({ ...prev, [s.id]: s }));
+                          setSubSearch("");
+                          setSubsResults([]);
                         }}
                         className="block w-full p-3 text-left hover:bg-gray-50 dark:hover:bg-white/[0.04]"
                         title={`Seleccionar ${s.customer_info?.name ?? ""}`}
@@ -377,47 +385,28 @@ export default function VisitModal({
               </div>
             )}
 
-            {/* ID manual de suscripción */}
-            <details className="rounded-lg border border-gray-200 p-2 text-xs text-gray-500 open:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:open:bg-white/[0.03]">
-              <summary className="cursor-pointer select-none">
-                Ingresar ID de suscripción manualmente
-              </summary>
-              <div className="mt-2 flex items-center gap-2">
+            {/* Usuario asignado (solo lectura) */}
+            {user && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+                  Tecnico asignado
+                </label>
                 <input
-                  type="number"
-                  value={subscriptionId ?? ""}
-                  onChange={(e) => {
-                    const val = e.target.value ? Number(e.target.value) : null;
-                    setSubscriptionId(val);
-                    setCustomerName("");
-                  }}
-                  onBlur={(e) => {
-                    const val = Number(e.target.value);
-                    if (val) void resolveCustomerNameFromSubscription(val);
-                  }}
-                  className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-2 text-sm text-gray-800 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                  placeholder="ID interno"
+                  type="text"
+                  disabled
+                  value={
+                    user.first_name || user.last_name
+                      ? `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim()
+                      : user.username ?? `ID ${user.id}`
+                  }
+                  className="h-11 w-full rounded-lg border border-gray-300 bg-gray-100 px-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900/60 dark:text-white/80"
                 />
               </div>
-            </details>
+            )}
           </div>
 
           {/* DERECHA: Datos de la visita */}
           <div className="space-y-4">
-            {/* User ID (visible) */}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                ID de usuario
-              </label>
-              <input
-                type="number"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                placeholder="Ej. 3"
-                className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-              />
-            </div>
-
             {/* Start (fecha + hora) */}
             <div className="grid grid-cols-2 gap-2">
               <div>

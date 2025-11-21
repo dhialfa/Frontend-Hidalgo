@@ -14,6 +14,9 @@ import {
   type Plan,
 } from "../../api/plan and subscriptions/plan.api"; // <-- deja este path si tu archivo real está aquí
 
+// 👇 usamos el contexto de auth para saber si es admin
+import { useAuth } from "../../auth/AuthContext";
+
 export default function PlansGrid() {
   // -------- Paginación + filtros (server-side) ----------
   const {
@@ -33,6 +36,10 @@ export default function PlansGrid() {
     ordering: "name",
     page_size: 12,
   });
+
+  // 👇 rol actual (admin / technician)
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
 
   // -------- UI state ----------
   const [createOpen, setCreateOpen] = useState(false);
@@ -95,11 +102,19 @@ export default function PlansGrid() {
   };
 
   const askDelete = (id: number) => {
+    // 🔒 si no es admin, no abre el modal
+    if (!isAdmin) return;
     setPendingId(id);
     setConfirmOpen(true);
   };
 
   const onDelete = async (id: number) => {
+    // 🔒 protección extra
+    if (!isAdmin) {
+      alert("No tienes permisos para eliminar planes.");
+      return;
+    }
+
     setDeletingIds((s) => new Set(s).add(id));
     try {
       await deletePlan(id);
@@ -207,7 +222,7 @@ export default function PlansGrid() {
                 className="rounded-2xl border border-gray-200 p-4 dark:border-white/[0.06] animate-pulse"
               >
                 <div className="h-5 w-2/3 bg-gray-200 dark:bg-white/10 rounded mb-3" />
-                <div className="h-4 w-1/2 bg-gray-200 dark:bg-white/10 rounded mb-2" />
+                <div className="h-4 w-1/2 bg-gray-200 dark:bg:white/10 rounded mb-2" />
                 <div className="h-4 w-5/6 bg-gray-200 dark:bg-white/10 rounded mb-6" />
                 <div className="flex items-center justify-between">
                   <div className="h-6 w-20 bg-gray-200 dark:bg-white/10 rounded" />
@@ -227,49 +242,58 @@ export default function PlansGrid() {
             {rows.map((p) => (
               <article
                 key={p.id}
-                className="group rounded-2xl border border-gray-200 bg-white p-5 transition hover:shadow-theme-md dark:border-white/[0.06] dark:bg-white/[0.03]"
+                className="group rounded-2xl border border-gray-200 bg-white p-5 transition hover:shadow-theme-md dark:border-white/[0.06] dark:bg:white/[0.03]"
               >
                 <header className="flex items-start justify-between gap-3">
                   <h4 className="text-base font-semibold text-gray-900 dark:text-white/90">{p.name}</h4>
-                  <Badge size="sm" color={p.active ? "success" : "error"}>{p.active ? "Activo" : "Inactivo"}</Badge>
+                  <Badge size="sm" color={p.active ? "success" : "error"}>
+                    {p.active ? "Activo" : "Inactivo"}
+                  </Badge>
                 </header>
 
                 {p.description && (
-                  <p className="mt-2 line-clamp-3 text-sm text-gray-600 dark:text-gray-400">{p.description}</p>
+                  <p className="mt-2 line-clamp-3 text-sm text-gray-600 dark:text-gray-400">
+                    {p.description}
+                  </p>
                 )}
 
                 <div className="mt-5 flex items-center justify-between">
-                  <div className="text-xl font-semibold text-gray-900 dark:text-white">
+                  <div className="text-xl font-semibold text-gray-900 dark:text:white">
                     {(() => {
                       const n = toNumber(p.price);
                       return n != null ? money.format(n) : "—";
                     })()}
-                    <span className="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">/mes</span>
+                    <span className="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">
+                      /mes
+                    </span>
                   </div>
                 </div>
 
                 <footer className="mt-4 flex items-center justify-end gap-2">
                   <button
                     onClick={() => openTasks(p)}
-                    className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                    className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg:white/[0.06]"
                   >
                     Ver tareas
                   </button>
 
                   <button
                     onClick={() => openEdit(p)}
-                    className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                    className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg:white/[0.06]"
                   >
                     Editar
                   </button>
 
-                  <button
-                    onClick={() => askDelete(p.id)}
-                    className="rounded-lg border border-red-500 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
-                    disabled={deletingIds.has(p.id)}
-                  >
-                    {deletingIds.has(p.id) ? "Eliminando…" : "Eliminar"}
-                  </button>
+                  {/* 🔒 Botón Eliminar SOLO para admins */}
+                  {isAdmin && (
+                    <button
+                      onClick={() => askDelete(p.id)}
+                      className="rounded-lg border border-red-500 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+                      disabled={deletingIds.has(p.id)}
+                    >
+                      {deletingIds.has(p.id) ? "Eliminando…" : "Eliminar"}
+                    </button>
+                  )}
                 </footer>
               </article>
             ))}
@@ -314,7 +338,7 @@ export default function PlansGrid() {
 
       {/* --- Modal CRUD Tareas --- */}
       <PlanTasksCrudModal
-        key={taskPlan?.id ?? 0}   // ⬅️ fuerza remount al cambiar de plan
+        key={taskPlan?.id ?? 0}
         isOpen={tasksOpen}
         onClose={closeTasks}
         plan={taskPlan}
@@ -327,7 +351,10 @@ export default function PlansGrid() {
           ¿Seguro que quieres eliminar este plan? Esta acción no se puede deshacer.
         </p>
         <div className="flex justify-end gap-3">
-          <button onClick={() => setConfirmOpen(false)} className="rounded-lg border px-4 py-2.5 text-sm">
+          <button
+            onClick={() => setConfirmOpen(false)}
+            className="rounded-lg border px-4 py-2.5 text-sm"
+          >
             Cancelar
           </button>
           <button
@@ -340,7 +367,9 @@ export default function PlansGrid() {
             disabled={pendingId != null && deletingIds.has(pendingId)}
             className="rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
           >
-            {pendingId != null && deletingIds.has(pendingId) ? "Eliminando..." : "Eliminar"}
+            {pendingId != null && deletingIds.has(pendingId)
+              ? "Eliminando..."
+              : "Eliminar"}
           </button>
         </div>
       </Modal>

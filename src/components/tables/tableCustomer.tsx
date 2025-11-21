@@ -20,8 +20,10 @@ import {
   deleteCustomer,
   type Customer,
 } from "../../api/customer/customer.api";
-import VisitsTable from "./tableVisits";
 import CustomerContactsModal from "../modal/modalCustomerContact";
+
+// 👇 IMPORTANTE: usamos el rol del usuario
+import { useAuth } from "../../auth/AuthContext";
 
 export default function CustomersTable() {
   // -------- Paginación + filtros ----------
@@ -37,6 +39,10 @@ export default function CustomersTable() {
     page_size: 25,
   });
 
+  // 👇 rol actual (admin / technician)
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
+
   // -------- UI state ----------
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -49,10 +55,6 @@ export default function CustomersTable() {
   // Modal contactos (solo control de apertura y cliente)
   const [contactsOpen, setContactsOpen] = useState(false);
   const [contactsCustomer, setContactsCustomer] = useState<Customer | null>(null);
-
-  // Modal visitas
-  const [visitsOpen, setVisitsOpen] = useState(false);
-  const [visitsCustomer, setVisitsCustomer] = useState<Customer | null>(null);
 
   /* ------------------- CRUD CLIENTES ------------------- */
   const onCreateSubmit = async (values: CustomerFormValues) => {
@@ -77,11 +79,19 @@ export default function CustomersTable() {
   };
 
   const askDelete = (id: number) => {
+    // 🔒 Seguridad extra: si no es admin, no hace nada
+    if (!isAdmin) return;
     setPendingId(id);
     setConfirmOpen(true);
   };
 
   const onDelete = async (id: number) => {
+    // 🔒 Seguridad extra: evitar borrar si no es admin
+    if (!isAdmin) {
+      alert("No tienes permisos para eliminar clientes.");
+      return;
+    }
+
     setDeletingIds((s) => new Set(s).add(id));
     try {
       await deleteCustomer(id);
@@ -115,12 +125,6 @@ export default function CustomersTable() {
     const base = currentOrdering.replace("-", "");
     if (base !== field) return "↕";
     return currentOrdering.startsWith("-") ? "↓" : "↑";
-  };
-
-  /* ------------------- VISITAS ------------------- */
-  const openVisitsModal = (customer: Customer) => {
-    setVisitsCustomer(customer);
-    setVisitsOpen(true);
   };
 
   /* ------------------- CONTACTOS ------------------- */
@@ -242,13 +246,7 @@ export default function CustomersTable() {
                       {c.phone || "—"}
                     </TableCell>
                     <TableCell className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => openVisitsModal(c)}
-                          className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
-                        >
-                          Ver visitas
-                        </button>
+                      <div className="flex flex-wrap gap-2">        
                         <button
                           onClick={() => openContactsModal(c)}
                           className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
@@ -261,13 +259,17 @@ export default function CustomersTable() {
                         >
                           Editar
                         </button>
-                        <button
-                          onClick={() => askDelete(c.id)}
-                          disabled={deletingIds.has(c.id)}
-                          className="rounded-lg border border-red-500 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50"
-                        >
-                          {deletingIds.has(c.id) ? "Eliminando..." : "Eliminar"}
-                        </button>
+
+                        {/* 🔒 Botón Eliminar SOLO para admins */}
+                        {isAdmin && (
+                          <button
+                            onClick={() => askDelete(c.id)}
+                            disabled={deletingIds.has(c.id)}
+                            className="rounded-lg border border-red-500 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50"
+                          >
+                            {deletingIds.has(c.id) ? "Eliminando..." : "Eliminar"}
+                          </button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -290,31 +292,12 @@ export default function CustomersTable() {
         />
       </div>
 
-      {/* --- Modal contactos (nuevo componente) --- */}
+      {/* --- Modal contactos --- */}
       <CustomerContactsModal
         isOpen={contactsOpen}
         onClose={() => setContactsOpen(false)}
         customer={contactsCustomer}
       />
-
-      {/* --- Modal visitas (usa VisitsTable en modo byCustomer) --- */}
-      <Modal
-        isOpen={visitsOpen}
-        onClose={() => setVisitsOpen(false)}
-        className="max-w-6xl p-6"
-      >
-        <h4 className="text-lg font-semibold mb-4 dark:text-white/90">
-          Visitas de {visitsCustomer?.name}
-        </h4>
-
-        {visitsCustomer ? (
-          <VisitsTable mode="byCustomer" customerId={visitsCustomer.id} />
-        ) : (
-          <p className="text-sm text-gray-500">
-            Selecciona un cliente para ver sus visitas.
-          </p>
-        )}
-      </Modal>
 
       {/* --- Modales CRUD Cliente --- */}
       <CustomerModal

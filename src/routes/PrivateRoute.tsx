@@ -7,7 +7,7 @@ export default function PrivateRoute() {
 
   if (!auth) {
     // No hay token, mandar al login
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/signin" replace />;
   }
 
   // Autenticado: renderiza las rutas hijas

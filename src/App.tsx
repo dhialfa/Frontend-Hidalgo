@@ -1,5 +1,13 @@
 // src/App.tsx
-import { BrowserRouter as Router, Routes, Route } from "react-router";
+import { useEffect } from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  useLocation,
+  useNavigate,
+} from "react-router";
+
 import SignIn from "./pages/AuthPages/SignIn";
 import NotFound from "./pages/OtherPage/NotFound";
 import Videos from "./pages/UiElements/Videos";
@@ -15,7 +23,7 @@ import BasicTables from "./pages/Tables/BasicTables";
 import FormElements from "./pages/Forms/FormElements";
 import CustomerTable from "./pages/Customers/CustomerTable";
 import VisitsPage from "./pages/Visits/VisitsPage";
-import UserPage from "./pages/Users/UserTable";
+import UserPage from "./pages/Users/UserTable"; 
 import Blank from "./pages/Blank";
 import PlanPage from "./pages/Plans/PlanPage";
 import SubscriptionsPage from "./pages/Subscriptions/SubscriptionsPage";
@@ -25,23 +33,71 @@ import Home from "./pages/Dashboard/Home";
 
 import PrivateRoute from "./routes/PrivateRoute";
 
+// helpers de auth (inactividad)
+import {
+  touchActivity,
+  hasSessionExpiredByInactivity,
+  clearAuth,
+} from "./api/auth/auth.api";
+
+// provider de autenticación (usuario + rol)
+import { AuthProvider } from "./auth/AuthContext";
+
+function AuthActivityWatcher() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const handleActivity = () => {
+      touchActivity();
+    };
+
+    window.addEventListener("click", handleActivity);
+    window.addEventListener("keydown", handleActivity);
+    window.addEventListener("mousemove", handleActivity);
+
+    touchActivity();
+
+    const intervalId = window.setInterval(() => {
+      if (hasSessionExpiredByInactivity()) {
+        clearAuth();
+        navigate("/signin", { replace: true });
+      }
+    }, 30 * 1000);
+
+    return () => {
+      window.removeEventListener("click", handleActivity);
+      window.removeEventListener("keydown", handleActivity);
+      window.removeEventListener("mousemove", handleActivity);
+      window.clearInterval(intervalId);
+    };
+  }, [navigate]);
+
+  useEffect(() => {
+    touchActivity();
+  }, [location.pathname]);
+
+  return null;
+}
+
 export default function App() {
   return (
-    <>
-      <Router>
+    <Router>
+      <AuthProvider>
         <ScrollToTop />
+        <AuthActivityWatcher />
+
         <Routes>
           {/* Ruta pública */}
           <Route path="/signin" element={<SignIn />} />
 
-          {/* PrivateRoute */}
+          {/* Rutas protegidas por login */}
           <Route element={<PrivateRoute />}>
-            {/* Dashboard Layout protegido */}
             <Route element={<AppLayout />}>
               <Route index path="/" element={<Home />} />
 
-              {/* Others Page */}
               <Route path="/users" element={<UserPage />} />
+
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/customers" element={<CustomerTable />} />
               <Route path="/plans" element={<PlanPage />} />
@@ -70,10 +126,10 @@ export default function App() {
             </Route>
           </Route>
 
-          {/* Fallback Route (puede quedar pública) */}
+          {/* Fallback */}
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </Router>
-    </>
+      </AuthProvider>
+    </Router>
   );
 }
