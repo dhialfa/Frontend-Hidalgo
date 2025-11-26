@@ -1,5 +1,4 @@
 import {
-  ArrowDownIcon,
   ArrowUpIcon,
   BoxIconLine,
   GroupIcon,
@@ -17,6 +16,9 @@ export default function EcommerceMetrics({
   activeCustomers,
   activeSubscriptions,
 }: Props) {
+  const activePercent =
+    totalCustomers > 0 ? (activeCustomers / totalCustomers) * 100 : 0;
+
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6">
       {/* Clientes */}
@@ -33,13 +35,13 @@ export default function EcommerceMetrics({
             <h4 className="mt-2 font-bold text-gray-800 text-title-sm dark:text-white/90">
               {activeCustomers}
             </h4>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               Total clientes: {totalCustomers}
             </p>
           </div>
           <Badge color="success">
             <ArrowUpIcon />
-            Hoy
+            {activePercent.toFixed(1)}%
           </Badge>
         </div>
       </div>
@@ -60,8 +62,7 @@ export default function EcommerceMetrics({
           </div>
 
           <Badge color="success">
-            <ArrowUpIcon />
-            Mensual
+            + Hoy
           </Badge>
         </div>
       </div>

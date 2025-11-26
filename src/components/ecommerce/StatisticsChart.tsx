@@ -1,16 +1,25 @@
-// src/components/ecommerce/StatisticsChart.tsx
 import Chart from "react-apexcharts";
-import { ApexOptions } from "apexcharts";
+import type { ApexOptions } from "apexcharts";
 import ChartTab from "../common/ChartTab";
+import type { VisitStatusCount } from "../../api/analytics";
 
-export default function StatisticsChart() {
+type Props = {
+  visitsByStatus?: VisitStatusCount[];
+};
+
+export default function StatisticsChart({ visitsByStatus = [] }: Props) {
+  const categories = visitsByStatus.map((v) => v.status);
+  const data = visitsByStatus.map((v) => v.count);
+
+  const hasData = data.length > 0;
+
   const options: ApexOptions = {
     legend: {
       show: false,
       position: "top",
       horizontalAlign: "left",
     },
-    colors: ["#465FFF", "#9CB9FF"],
+    colors: ["#465FFF"],
     chart: {
       fontFamily: "Outfit, sans-serif",
       height: 310,
@@ -21,7 +30,7 @@ export default function StatisticsChart() {
     },
     stroke: {
       curve: "straight",
-      width: [2, 2],
+      width: [2],
     },
     fill: {
       type: "gradient",
@@ -39,51 +48,21 @@ export default function StatisticsChart() {
       },
     },
     grid: {
-      xaxis: {
-        lines: {
-          show: false,
-        },
-      },
-      yaxis: {
-        lines: {
-          show: true,
-        },
-      },
+      xaxis: { lines: { show: false } },
+      yaxis: { lines: { show: true } },
     },
     dataLabels: {
       enabled: false,
     },
     tooltip: {
       enabled: true,
-      x: {
-        format: "dd MMM yyyy",
-      },
     },
     xaxis: {
       type: "category",
-      categories: [
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "May",
-        "Jun",
-        "Jul",
-        "Aug",
-        "Sep",
-        "Oct",
-        "Nov",
-        "Dec",
-      ],
-      axisBorder: {
-        show: false,
-      },
-      axisTicks: {
-        show: false,
-      },
-      tooltip: {
-        enabled: false,
-      },
+      categories: hasData ? categories : ["Sin datos"],
+      axisBorder: { show: false },
+      axisTicks: { show: false },
+      tooltip: { enabled: false },
     },
     yaxis: {
       labels: {
@@ -94,22 +73,15 @@ export default function StatisticsChart() {
       },
       title: {
         text: "",
-        style: {
-          fontSize: "0px",
-        },
+        style: { fontSize: "0px" },
       },
     },
   };
 
-  // Datos MOCK de ejemplo
   const series = [
     {
-      name: "Sales",
-      data: [180, 190, 170, 160, 175, 165, 170, 205, 230, 210, 240, 235],
-    },
-    {
-      name: "Revenue",
-      data: [40, 30, 50, 40, 55, 40, 70, 100, 110, 120, 150, 140],
+      name: "Visitas",
+      data: hasData ? data : [0],
     },
   ];
 
@@ -118,10 +90,10 @@ export default function StatisticsChart() {
       <div className="flex flex-col gap-5 mb-6 sm:flex-row sm:justify-between">
         <div className="w-full">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            Statistics
+            Visitas por estado
           </h3>
           <p className="mt-1 text-gray-500 text-theme-sm dark:text-gray-400">
-            Target you’ve set for each month
+            Completadas, pendientes, etc. según el rango seleccionado.
           </p>
         </div>
         <div className="flex items-start w-full gap-3 sm:justify-end">
@@ -130,7 +102,7 @@ export default function StatisticsChart() {
       </div>
 
       <div className="max-w-full overflow-x-auto custom-scrollbar">
-        <div className="min-w-[1000px] xl:min-w-full">
+        <div className="min-w-[600px] xl:min-w-full">
           <Chart options={options} series={series} type="area" height={310} />
         </div>
       </div>
