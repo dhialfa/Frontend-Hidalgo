@@ -5,17 +5,35 @@ import MonthlyTarget from "../../components/ecommerce/MonthlyTarget";
 import RecentOrders from "../../components/ecommerce/RecentOrders";
 import DemographicCard from "../../components/ecommerce/DemographicCard";
 import PageMeta from "../../components/common/PageMeta";
+import { useDashboard } from "../../hooks/useDashboard";
 
 export default function Home() {
+  const { data, loading, error } = useDashboard();
+
+  if (loading) {
+    return <p className="p-4">Cargando estadísticas...</p>;
+  }
+
+  if (error || !data) {
+    return <p className="p-4 text-red-500">Error cargando datos</p>;
+  }
+
+  const totals = data.totals;
+
   return (
     <>
       <PageMeta
         title="Computadores Hidalgo - Soporte"
         description="App de registro de visitas"
       />
+
       <div className="grid grid-cols-12 gap-4 md:gap-6">
         <div className="col-span-12 space-y-6 xl:col-span-7">
-          <EcommerceMetrics />
+          <EcommerceMetrics
+            totalCustomers={totals.total_customers}
+            activeCustomers={totals.active_customers}
+            activeSubscriptions={totals.active_subscriptions}
+          />
 
           <MonthlySalesChart />
         </div>
