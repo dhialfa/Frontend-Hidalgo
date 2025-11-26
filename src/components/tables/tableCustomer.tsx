@@ -1,5 +1,5 @@
 // src/components/customers/CustomersTable.tsx
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   Table,
   TableBody,
@@ -7,7 +7,6 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/table";
-import Badge from "../ui/badge/Badge";
 import { Modal } from "../ui/modal/index";
 import Pagination from "../ui/Pagination";
 import { usePager } from "../../hooks/usePager";
@@ -15,23 +14,16 @@ import { usePager } from "../../hooks/usePager";
 import CustomerModal, { CustomerFormValues } from "../modal/modalCustomer";
 
 import {
-  getCustomers,          // ⬅️ listado paginado (nuevo)
+  getCustomers,
   createCustomer,
   updateCustomer,
   deleteCustomer,
   type Customer,
 } from "../../api/customer/customer.api";
+import CustomerContactsModal from "../modal/modalCustomerContact";
 
-import {
-  getContactsByCustomer,
-  createContactByCustomer,
-  updateCustomerContact,
-  deleteCustomerContact,
-  type CustomerContact,
-} from "../../api/customer/customer-contact.api";
-
-// 👇 Tabla reutilizable de visitas
-import VisitsTable from "./tableVisits";
+// 👇 IMPORTANTE: usamos el rol del usuario
+import { useAuth } from "../../auth/AuthContext";
 
 export default function CustomersTable() {
   // -------- Paginación + filtros ----------
@@ -43,9 +35,13 @@ export default function CustomersTable() {
     params, setParams,
     reload,
   } = usePager<Customer>(getCustomers, {
-    ordering: "name",     // orden inicial
+    ordering: "name",
     page_size: 25,
   });
+
+  // 👇 rol actual (admin / technician)
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
 
   // -------- UI state ----------
   const [createOpen, setCreateOpen] = useState(false);
@@ -56,29 +52,21 @@ export default function CustomersTable() {
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
 
-  // Modal contactos
+  // Modal contactos (solo control de apertura y cliente)
   const [contactsOpen, setContactsOpen] = useState(false);
   const [contactsCustomer, setContactsCustomer] = useState<Customer | null>(null);
-  const [contacts, setContacts] = useState<CustomerContact[]>([]);
-  const [contactsLoading, setContactsLoading] = useState(false);
-  const [contactForm, setContactForm] = useState<Partial<CustomerContact>>({});
-  const [editingContact, setEditingContact] = useState<CustomerContact | null>(null);
-
-  // 👇 Modal visitas
-  const [visitsOpen, setVisitsOpen] = useState(false);
-  const [visitsCustomer, setVisitsCustomer] = useState<Customer | null>(null);
 
   /* ------------------- CRUD CLIENTES ------------------- */
   const onCreateSubmit = async (values: CustomerFormValues) => {
     await createCustomer(values);
-    setPage(1);           // vuelve a primera página
-    await reload();       // recarga datos
+    setPage(1);
+    await reload();
   };
 
   const onEditSubmit = async (values: CustomerFormValues) => {
     if (!selected) return;
     await updateCustomer(selected.id, values);
-    await reload();       // recarga la página actual
+    await reload();
   };
 
   const openEdit = (row: Customer) => {
@@ -91,15 +79,22 @@ export default function CustomersTable() {
   };
 
   const askDelete = (id: number) => {
+    // 🔒 Seguridad extra: si no es admin, no hace nada
+    if (!isAdmin) return;
     setPendingId(id);
     setConfirmOpen(true);
   };
 
   const onDelete = async (id: number) => {
+    // 🔒 Seguridad extra: evitar borrar si no es admin
+    if (!isAdmin) {
+      alert("No tienes permisos para eliminar clientes.");
+      return;
+    }
+
     setDeletingIds((s) => new Set(s).add(id));
     try {
       await deleteCustomer(id);
-      // si queda la página vacía tras borrar, retrocede una
       if (rows.length - 1 <= 0 && page > 1) setPage(page - 1);
       await reload();
     } catch {
@@ -133,78 +128,9 @@ export default function CustomersTable() {
   };
 
   /* ------------------- CONTACTOS ------------------- */
-  const loadContacts = async (customer: Customer) => {
-    setContactsCustomer(customer);
-    setContactsLoading(true);
-    try {
-      const res = await getContactsByCustomer(customer.id);
-      setContacts(res.data);
-    } catch {
-      setContacts([]);
-    } finally {
-      setContactsLoading(false);
-    }
-  };
-
   const openContactsModal = (customer: Customer) => {
+    setContactsCustomer(customer);
     setContactsOpen(true);
-    loadContacts(customer);
-  };
-
-  const handleContactChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setContactForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-  };
-
-  const submitContact = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!contactsCustomer) return;
-    try {
-      if (editingContact) {
-        const res = await updateCustomerContact(editingContact.id, contactForm);
-        setContacts((prev) =>
-          prev.map((ct) => (ct.id === editingContact.id ? res.data : ct))
-        );
-      } else {
-        const payload = {
-          name: contactForm.name ?? "",
-          email: contactForm.email ?? "",
-          phone: contactForm.phone ?? "",
-          is_main: Boolean(contactForm.is_main),
-        };
-        if (!payload.name.trim() || !payload.email.trim()) {
-          alert("Nombre y correo son requeridos");
-          return;
-        }
-        const res = await createContactByCustomer(contactsCustomer.id, payload);
-        setContacts((prev) => [res.data, ...prev]);
-      }
-      setContactForm({});
-      setEditingContact(null);
-    } catch {
-      alert("Error al guardar contacto");
-    }
-  };
-
-  const editContact = (ct: CustomerContact) => {
-    setEditingContact(ct);
-    setContactForm(ct);
-  };
-
-  const deleteContact = async (id: number) => {
-    if (!confirm("¿Eliminar contacto?")) return;
-    await deleteCustomerContact(id);
-    setContacts((prev) => prev.filter((c) => c.id !== id));
-  };
-
-  const resetForm = () => {
-    setEditingContact(null);
-    setContactForm({});
-  };
-
-  /* ------------------- VISITAS ------------------- */
-  const openVisitsModal = (customer: Customer) => {
-    setVisitsCustomer(customer);
-    setVisitsOpen(true);
   };
 
   return (
@@ -320,13 +246,7 @@ export default function CustomersTable() {
                       {c.phone || "—"}
                     </TableCell>
                     <TableCell className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => openVisitsModal(c)}
-                          className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
-                        >
-                          Ver visitas
-                        </button>
+                      <div className="flex flex-wrap gap-2">        
                         <button
                           onClick={() => openContactsModal(c)}
                           className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
@@ -339,13 +259,17 @@ export default function CustomersTable() {
                         >
                           Editar
                         </button>
-                        <button
-                          onClick={() => askDelete(c.id)}
-                          disabled={deletingIds.has(c.id)}
-                          className="rounded-lg border border-red-500 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50"
-                        >
-                          {deletingIds.has(c.id) ? "Eliminando..." : "Eliminar"}
-                        </button>
+
+                        {/* 🔒 Botón Eliminar SOLO para admins */}
+                        {isAdmin && (
+                          <button
+                            onClick={() => askDelete(c.id)}
+                            disabled={deletingIds.has(c.id)}
+                            className="rounded-lg border border-red-500 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50"
+                          >
+                            {deletingIds.has(c.id) ? "Eliminando..." : "Eliminar"}
+                          </button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -365,158 +289,15 @@ export default function CustomersTable() {
           pageSize={pageSize}
           onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
           pageSizeOptions={[10, 25, 50, 100]}
-      />
+        />
       </div>
 
       {/* --- Modal contactos --- */}
-      <Modal
+      <CustomerContactsModal
         isOpen={contactsOpen}
         onClose={() => setContactsOpen(false)}
-        className="max-w-3xl p-6"
-      >
-        <h4 className="text-lg font-semibold mb-3 dark:text-white/90">
-          Contactos de {contactsCustomer?.name}
-        </h4>
-
-        <form
-          onSubmit={submitContact}
-          className="flex flex-wrap gap-3 items-end mb-6 border-b border-gray-100 pb-4 dark:border-white/[0.06]"
-        >
-          <input
-            type="text"
-            name="name"
-            placeholder="Nombre"
-            value={contactForm.name || ""}
-            onChange={handleContactChange}
-            className="dark:bg-dark-900 h-11 flex-1 rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            required
-          />
-          <input
-            type="email"
-            name="email"
-            placeholder="Correo"
-            value={contactForm.email || ""}
-            onChange={handleContactChange}
-            className="dark:bg-dark-900 h-11 flex-1 rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            required
-          />
-          <input
-            type="text"
-            name="phone"
-            placeholder="Teléfono"
-            value={contactForm.phone || ""}
-            onChange={handleContactChange}
-            className="dark:bg-dark-900 h-11 flex-1 rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-          />
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-400">
-            <input
-              type="checkbox"
-              name="is_main"
-              checked={Boolean(contactForm.is_main)}
-              onChange={(e) =>
-                setContactForm((prev) => ({ ...prev, is_main: e.target.checked }))
-              }
-              className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-700"
-            />
-            Principal
-          </label>
-
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
-            >
-              {editingContact ? "Actualizar" : "Guardar"}
-            </button>
-            {editingContact && (
-              <button
-                type="button"
-                onClick={resetForm}
-                className="rounded-lg border px-4 py-2.5 text-sm dark:border-gray-700"
-              >
-                Cancelar
-              </button>
-            )}
-          </div>
-        </form>
-
-        {contactsLoading ? (
-          <p className="text-sm text-gray-500">Cargando contactos...</p>
-        ) : contacts.length === 0 ? (
-          <p className="text-sm text-gray-500">No hay contactos registrados.</p>
-        ) : (
-          <Table>
-            <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
-              <TableRow>
-                {["Nombre", "Correo", "Teléfono", "Principal", "Acciones"].map(
-                  (h) => (
-                    <TableCell
-                      key={h}
-                      isHeader
-                      className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
-                    >
-                      {h}
-                    </TableCell>
-                  )
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-              {contacts.map((ct) => (
-                <TableRow key={ct.id}>
-                  <TableCell className="text-gray-800 dark:text-white/90 text-theme-sm">
-                    {ct.name}
-                  </TableCell>
-                  <TableCell className="text-gray-500 dark:text-gray-400 text-theme-sm">
-                    {ct.email}
-                  </TableCell>
-                  <TableCell className="text-gray-500 dark:text-gray-400 text-theme-sm">
-                    {ct.phone || "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge size="sm">{ct.is_main ? "Sí" : "No"}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => editContact(ct)}
-                        className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={() => deleteContact(ct.id)}
-                        className="rounded-lg border border-red-500 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
-                      >
-                        Eliminar
-                      </button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Modal>
-
-      {/* --- Modal visitas (usa VisitsTable en modo byCustomer) --- */}
-      <Modal
-        isOpen={visitsOpen}
-        onClose={() => setVisitsOpen(false)}
-        className="max-w-6xl p-6"
-      >
-        <h4 className="text-lg font-semibold mb-4 dark:text-white/90">
-          Visitas de {visitsCustomer?.name}
-        </h4>
-
-        {visitsCustomer ? (
-          <VisitsTable mode="byCustomer" customerId={visitsCustomer.id} />
-        ) : (
-          <p className="text-sm text-gray-500">
-            Selecciona un cliente para ver sus visitas.
-          </p>
-        )}
-      </Modal>
+        customer={contactsCustomer}
+      />
 
       {/* --- Modales CRUD Cliente --- */}
       <CustomerModal

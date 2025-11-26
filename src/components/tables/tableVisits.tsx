@@ -1,6 +1,12 @@
 // src/components/visits/VisitsTable.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Table, TableBody, TableCell, TableHeader, TableRow } from "../ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
 import Pagination from "../ui/Pagination";
 import {
   getVisits,
@@ -9,7 +15,7 @@ import {
   completeVisit,
   cancelVisit,
   createVisit,
-  updateVisit,
+  patchVisit,
   deleteVisit,
   type Visit,
   type VisitStatus,
@@ -30,7 +36,7 @@ type Mode = "all" | "byCustomer";
 
 type Props = {
   mode: Mode;
-  customerId?: number;        // requerido si mode === 'byCustomer'
+  customerId?: number; // requerido si mode === 'byCustomer'
   title?: string;
   pageSize?: number;
   showFilters?: boolean;
@@ -50,23 +56,32 @@ function fmtDate(date?: string | null) {
   const d = new Date(date);
   return d.toLocaleString();
 }
+
 function uniqNumbers(arr: Array<number | null | undefined>): number[] {
-  return Array.from(new Set(arr.filter((x): x is number => typeof x === "number")));
+  return Array.from(
+    new Set(arr.filter((x): x is number => typeof x === "number"))
+  );
 }
+
 function toDateOnly(isoLike?: string | null) {
   return (isoLike || "").slice(0, 10);
 }
+
 function ActionSeparator() {
-  return <span aria-hidden className="mx-1 h-6 w-px self-center bg-gray-200 dark:bg-white/10" />;
+  return (
+    <span
+      aria-hidden
+      className="mx-1 h-6 w-px self-center bg-gray-200 dark:bg-white/10"
+    />
+  );
 }
 
 type PlanTaskLite = { id: number; name: string; description?: string };
 type PlanSubscriptionWithDetail = PlanSubscription & {
   plan_detail?: { tasks?: PlanTaskLite[] };
+  customer_info?: { name?: string };
 };
 
-// Si tus funciones API devuelven AxiosResponse, mantenemos .data.
-// Si ya devolvieran PageResp directamente, elimina los “.data” más abajo.
 export default function VisitsTable({
   mode,
   customerId,
@@ -94,7 +109,9 @@ export default function VisitsTable({
   const [actingId, setActingId] = useState<number | null>(null);
 
   // Cache suscripciones
-  const [subCache, setSubCache] = useState<Record<number, PlanSubscriptionWithDetail>>({});
+  const [subCache, setSubCache] = useState<
+    Record<number, PlanSubscriptionWithDetail>
+  >({});
 
   // MODAL CRUD
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -123,43 +140,59 @@ export default function VisitsTable({
   const [tasksPlanTasks, setTasksPlanTasks] = useState<PlanTaskLite[]>([]);
 
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
-  const toggleRow = (id: number) => setExpandedRow(prev => (prev === id ? null : id));
+  const toggleRow = (id: number) =>
+    setExpandedRow((prev) => (prev === id ? null : id));
 
-  const headerTitle = useMemo(() => title ?? (mode === "byCustomer" ? "Visitas por cliente" : "Visitas"), [mode, title]);
+  const headerTitle = useMemo(
+    () =>
+      title ?? (mode === "byCustomer" ? "Visitas por cliente" : "Visitas"),
+    [mode, title]
+  );
 
   // Loader con paginación DRF
   const load = async () => {
     setLoading(true);
     setErr(null);
     try {
-      const params: any = { page, page_size: pageSizeState, ordering };
+      const params: any = {
+        page,
+        page_size: pageSizeState,
+        ordering,
+      };
       if (search.trim()) params.search = search.trim();
       if (status !== "all") params.status = status;
 
-      const res = mode === "byCustomer"
-        ? await getVisitsByCustomer(customerId!, params)
-        : await getVisits(params);
+      const res =
+        mode === "byCustomer"
+          ? await getVisitsByCustomer(customerId!, params)
+          : await getVisits(params);
 
-      const data: any = res.data; // si tus APIs ya devuelven PageResp, usa: const data = res;
+      const data: any = res.data; // si tu API cambiara a devolver PageResp directo, aquí sería sólo `const data = res;`
       const results: Visit[] = Array.isArray(data)
         ? data
         : Array.isArray(data?.results)
-          ? data.results
-          : [];
+        ? data.results
+        : [];
 
       setRows(results);
       setCount(Array.isArray(data) ? data.length : Number(data?.count ?? 0));
 
-      // Prefetch subscriptions para cliente/tareas
-      const subIds = uniqNumbers(results.map(v => (v as any).subscription));
-      const missing = subIds.filter(id => !(id in subCache));
+      // Prefetch de suscripciones para datos de cliente y plan/tareas
+      const subIds = uniqNumbers(results.map((v) => (v as any).subscription));
+      const missing = subIds.filter((id) => !(id in subCache));
       if (missing.length) {
-        const fetchedEntries = await Promise.allSettled(missing.map(id => getPlanSubscription(id)));
+        const fetchedEntries = await Promise.allSettled(
+          missing.map((id) => getPlanSubscription(id))
+        );
         const next: Record<number, PlanSubscriptionWithDetail> = {};
         fetchedEntries.forEach((r, i) => {
-          if (r.status === "fulfilled") next[missing[i]] = r.value.data as PlanSubscriptionWithDetail;
+          if (r.status === "fulfilled") {
+            next[missing[i]] = r.value.data as PlanSubscriptionWithDetail;
+          }
         });
-        if (Object.keys(next).length) setSubCache(prev => ({ ...prev, ...next }));
+        if (Object.keys(next).length) {
+          setSubCache((prev) => ({ ...prev, ...next }));
+        }
       }
     } catch (e: any) {
       setErr(e?.response?.data?.detail || "Error al cargar visitas");
@@ -172,6 +205,7 @@ export default function VisitsTable({
 
   useEffect(() => {
     if (mode === "byCustomer" && !customerId) return;
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, customerId, page, pageSizeState, search, status, ordering]);
@@ -191,20 +225,22 @@ export default function VisitsTable({
       setActingId(null);
     }
   };
+
   const doComplete = async (id: number) => {
     setActingId(id);
     try {
-      await completeVisit(id);
+      await completeVisit(id); // POST /id/complete/ -> dispara correo
       await load();
     } finally {
       setActingId(null);
     }
   };
+
   const doCancel = async (id: number) => {
     const reason = prompt("Motivo de cancelación (opcional):") ?? "";
     setActingId(id);
     try {
-      await cancelVisit(id, reason); // usa motivo si tu endpoint lo soporta
+      await cancelVisit(id, reason);
       await load();
     } finally {
       setActingId(null);
@@ -231,7 +267,11 @@ export default function VisitsTable({
 
   const openEdit = (v: Visit) => {
     const subId = (v as any).subscription ?? null;
-    const cName = subId && subCache[subId]?.customer_info?.name ? subCache[subId]!.customer_info!.name : "";
+    const cName =
+      subId && subCache[subId]?.customer_info?.name
+        ? subCache[subId]!.customer_info!.name || ""
+        : "";
+
     setModalInitial({
       id: v.id,
       subscriptionId: subId ?? null,
@@ -247,19 +287,27 @@ export default function VisitsTable({
     setIsModalOpen(true);
   };
 
-  const onSaveFromModal = async (dto: VisitBackendDTO, opts?: { id?: number | null }) => {
-    if (opts?.id) await updateVisit(opts.id, dto as any);
-    else await createVisit(dto as any);
+  const onSaveFromModal = async (
+    dto: VisitBackendDTO,
+    opts?: { id?: number | null }
+  ) => {
+    if (opts?.id) {
+      // Usamos PATCH para evitar problemas de PUT parcial (400)
+      await patchVisit(opts.id, dto as any);
+    } else {
+      await createVisit(dto as any);
+      // si agregaste un registro y ordenas por -start, vuelve a la primera página
+      if (ordering === "-start") setPage(1);
+    }
     setIsModalOpen(false);
-    // si agregaste un registro y ordenas por -start, vuelve a la primera página
-    if (!opts?.id && ordering === "-start") setPage(1);
     await load();
   };
 
   const onDeleteFromModal = async (id: number) => {
     await deleteVisit(id);
-    // si borras el último de la página, retrocede
-    if (rows.length - 1 <= 0 && page > 1) setPage(p => p - 1);
+    if (rows.length - 1 <= 0 && page > 1) {
+      setPage((p) => p - 1);
+    }
     setIsModalOpen(false);
     await load();
   };
@@ -270,8 +318,15 @@ export default function VisitsTable({
     if (!subId) return [];
     const sub = subCache[subId] as PlanSubscriptionWithDetail | undefined;
     const tasks = sub?.plan_detail?.tasks;
-    return Array.isArray(tasks) ? tasks.map(t => ({ id: t.id, name: t.name, description: t.description })) : [];
+    return Array.isArray(tasks)
+      ? tasks.map((t) => ({
+          id: t.id,
+          name: t.name,
+          description: t.description,
+        }))
+      : [];
   }
+
   function openTasks(v: Visit) {
     setTasksPlanTasks(getPlanTasksForVisit(v));
     setTasksVisitId(v.id);
@@ -305,13 +360,19 @@ export default function VisitsTable({
             <>
               <input
                 value={search}
-                onChange={(e) => { setPage(1); setSearch(e.target.value); }}
+                onChange={(e) => {
+                  setPage(1);
+                  setSearch(e.target.value);
+                }}
                 placeholder="Buscar (notas, dirección, cliente)…"
                 className="h-10 w-60 rounded-lg border border-gray-300 bg-transparent px-3 text-sm placeholder:text-gray-400 focus:border-brand-300 focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
               />
               <select
                 value={status}
-                onChange={(e) => { setPage(1); setStatus(e.target.value as any); }}
+                onChange={(e) => {
+                  setPage(1);
+                  setStatus(e.target.value as any);
+                }}
                 className="h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm focus:border-brand-300 focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
               >
                 <option value="all">Todos los estados</option>
@@ -322,7 +383,10 @@ export default function VisitsTable({
               </select>
               <select
                 value={ordering}
-                onChange={(e) => { setPage(1); setOrdering(e.target.value); }}
+                onChange={(e) => {
+                  setPage(1);
+                  setOrdering(e.target.value);
+                }}
                 className="h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm focus:border-brand-300 focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
               >
                 <option value="-start">Más recientes</option>
@@ -338,11 +402,18 @@ export default function VisitsTable({
               </select>
               <select
                 value={pageSizeState}
-                onChange={(e) => { setPage(1); setPageSizeState(Number(e.target.value)); }}
+                onChange={(e) => {
+                  setPage(1);
+                  setPageSizeState(Number(e.target.value));
+                }}
                 className="h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm focus:border-brand-300 focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
                 title="Registros por página"
               >
-                {[10, 20, 25, 50, 100].map(n => <option key={n} value={n}>{n}/pág</option>)}
+                {[10, 20, 25, 50, 100].map((n) => (
+                  <option key={n} value={n}>
+                    {n}/pág
+                  </option>
+                ))}
               </select>
             </>
           )}
@@ -363,7 +434,11 @@ export default function VisitsTable({
             <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
               <TableRow>
                 {columns.map((c) => (
-                  <TableCell key={c.key} isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                  <TableCell
+                    key={c.key}
+                    isHeader
+                    className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                  >
                     {c.label}
                   </TableCell>
                 ))}
@@ -373,7 +448,10 @@ export default function VisitsTable({
             <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
               {loading && (
                 <tr>
-                  <td colSpan={columns.length} className="px-5 py-4 text-start text-gray-600 dark:text-gray-400">
+                  <td
+                    colSpan={columns.length}
+                    className="px-5 py-4 text-start text-gray-600 dark:text-gray-400"
+                  >
                     Cargando visitas…
                   </td>
                 </tr>
@@ -381,127 +459,159 @@ export default function VisitsTable({
 
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={columns.length} className="px-5 py-4 text-start text-gray-600 dark:text-gray-400">
+                  <td
+                    colSpan={columns.length}
+                    className="px-5 py-4 text-start text-gray-600 dark:text-gray-400"
+                  >
                     No hay visitas.
                   </td>
                 </tr>
               )}
 
-              {!loading && rows.map((v) => {
-                const start = (v as any).start ?? null;
-                const end = (v as any).end ?? null;
-                const siteAddress = (v as any).site_address ?? "—";
-                const state = (v.status || "scheduled") as VisitStatus;
+              {!loading &&
+                rows.map((v) => {
+                  const start = (v as any).start ?? null;
+                  const end = (v as any).end ?? null;
+                  const siteAddress = (v as any).site_address ?? "—";
+                  const state = (v.status || "scheduled") as VisitStatus;
 
-                const subId = (v as any).subscription ?? null;
-                const cName =
-                  subId && subCache[subId]?.customer_info?.name
-                    ? subCache[subId]!.customer_info!.name
-                    : "—";
+                  const subId = (v as any).subscription ?? null;
+                  const cName =
+                    subId && subCache[subId]?.customer_info?.name
+                      ? subCache[subId]!.customer_info!.name || "—"
+                      : "—";
 
-                const isOpen = expandedRow === v.id;
+                  const isOpen = expandedRow === v.id;
 
-                return (
-                  <React.Fragment key={v.id}>
-                    <tr
-                      onClick={() => toggleRow(v.id)}
-                      className={`cursor-pointer transition-colors ${
-                        isOpen ? "bg-gray-50 dark:bg-white/[0.04]" : "hover:bg-gray-50 dark:hover:bg白/[0.02]"
-                      }`}
-                    >
-                      {showIds && (
-                        <TableCell className="px-5 py-4 text-theme-sm text-gray-800 dark:text-white/90">
-                          {v.id}
+                  return (
+                    <React.Fragment key={v.id}>
+                      <tr
+                        onClick={() => toggleRow(v.id)}
+                        className={`cursor-pointer transition-colors ${
+                          isOpen
+                            ? "bg-gray-50 dark:bg-white/[0.04]"
+                            : "hover:bg-gray-50 dark:hover:bg-white/[0.02]"
+                        }`}
+                      >
+                        {showIds && (
+                          <TableCell className="px-5 py-4 text-theme-sm text-gray-800 dark:text-white/90">
+                            {v.id}
+                          </TableCell>
+                        )}
+                        <TableCell className="px-4 py-3 text-gray-800 dark:text-gray-100 text-theme-sm font-medium">
+                          {cName}
                         </TableCell>
-                      )}
-                      <TableCell className="px-4 py-3 text-gray-800 dark:text-gray-100 text-theme-sm font-medium">
-                        {cName}
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm">
-                        {fmtDate(start)}
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm">
-                        {fmtDate(end)}
-                      </TableCell>
-                      <TableCell className="px-4 py-3">
-                        <StatusPill status={state} />
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm">
-                        {siteAddress || "—"}
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm truncate max-w-[240px]">
-                        {v.notes || "—"}
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-gray-400 text-xs select-none">
-                        {isOpen ? "▲" : "▼"}
-                      </TableCell>
-                    </tr>
-
-                    {isOpen && (
-                      <tr className="bg-gray-50 dark:bg-white/[0.03]">
-                        <td colSpan={columns.length} className="px-5 py-3">
-                          <div className="flex flex-wrap items-center gap-3">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); doStart(v.id); }}
-                              disabled={actingId === v.id}
-                              className="rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 px-3 py-1.5 text-xs font-semibold hover:bg-amber-200 disabled:opacity-60"
-                            >
-                              Iniciar
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); doComplete(v.id); }}
-                              disabled={actingId === v.id}
-                              className="rounded-lg bg-green-100 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-200 disabled:opacity-60"
-                            >
-                              Completar
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); doCancel(v.id); }}
-                              disabled={actingId === v.id}
-                              className="rounded-lg border border-red-500 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
-                            >
-                              Cancelar
-                            </button>
-
-                            <ActionSeparator />
-
-                            <button
-                              onClick={(e) => { e.stopPropagation(); openEdit(v); }}
-                              className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
-                            >
-                              Editar
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setMaterialsVisitId(v.id); setMaterialsOpen(true); }}
-                              className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
-                            >
-                              Materiales usados
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setEvidencesVisitId(v.id); setEvidencesOpen(true); }}
-                              className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
-                            >
-                              Evidencias
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setTasksPlanTasks(getPlanTasksForVisit(v)); setTasksVisitId(v.id); setTasksOpen(true); }}
-                              className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
-                            >
-                              Tareas
-                            </button>
-                          </div>
-                        </td>
+                        <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm">
+                          {fmtDate(start)}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm">
+                          {fmtDate(end)}
+                        </TableCell>
+                        <TableCell className="px-4 py-3">
+                          <StatusPill status={state} />
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm">
+                          {siteAddress || "—"}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm truncate max-w-[240px]">
+                          {v.notes || "—"}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-gray-400 text-xs select-none">
+                          {isOpen ? "▲" : "▼"}
+                        </TableCell>
                       </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
+
+                      {isOpen && (
+                        <tr className="bg-gray-50 dark:bg-white/[0.03]">
+                          <td
+                            colSpan={columns.length}
+                            className="px-5 py-3"
+                          >
+                            <div className="flex flex-wrap items-center gap-3">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void doStart(v.id);
+                                }}
+                                disabled={actingId === v.id}
+                                className="rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 px-3 py-1.5 text-xs font-semibold hover:bg-amber-200 disabled:opacity-60"
+                              >
+                                Iniciar
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void doComplete(v.id);
+                                }}
+                                disabled={actingId === v.id}
+                                className="rounded-lg bg-green-100 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-200 disabled:opacity-60"
+                              >
+                                Completar
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void doCancel(v.id);
+                                }}
+                                disabled={actingId === v.id}
+                                className="rounded-lg border border-red-500 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+                              >
+                                Cancelar
+                              </button>
+
+                              <ActionSeparator />
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEdit(v);
+                                }}
+                                className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMaterialsVisitId(v.id);
+                                  setMaterialsOpen(true);
+                                }}
+                                className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                              >
+                                Materiales usados
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEvidencesVisitId(v.id);
+                                  setEvidencesOpen(true);
+                                }}
+                                className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                              >
+                                Evidencias
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openTasks(v);
+                                }}
+                                className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                              >
+                                Tareas
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
             </TableBody>
           </Table>
         </div>
       </div>
 
-      {/* Paginación (usa tu componente reutilizable) */}
+      {/* Paginación */}
       <div className="flex items-center justify-between px-5 py-3 sm:px-6 border-t border-gray-100 dark:border-white/[0.06]">
         <span className="text-xs text-gray-500 dark:text-gray-400">
           Página {page} de {pageCount} • Total: {count}
@@ -511,7 +621,10 @@ export default function VisitsTable({
           totalPages={pageCount}
           onPageChange={setPage}
           pageSize={pageSizeState}
-          onPageSizeChange={(n) => { setPage(1); setPageSizeState(n); }}
+          onPageSizeChange={(n) => {
+            setPage(1);
+            setPageSizeState(n);
+          }}
           pageSizeOptions={[10, 20, 25, 50, 100]}
         />
       </div>
@@ -556,13 +669,20 @@ export default function VisitsTable({
 
 function StatusPill({ status }: { status: VisitStatus }) {
   const palette: Record<VisitStatus, string> = {
-    scheduled: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
-    in_progress: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300",
-    completed: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300",
-    canceled: "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300",
+    scheduled:
+      "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
+    in_progress:
+      "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300",
+    completed:
+      "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300",
+    canceled:
+      "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300",
   };
+
   return (
-    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${palette[status]}`}>
+    <span
+      className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${palette[status]}`}
+    >
       {STATUS_LABEL[status]}
     </span>
   );

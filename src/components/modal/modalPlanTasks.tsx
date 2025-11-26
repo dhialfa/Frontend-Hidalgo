@@ -1,15 +1,14 @@
-// src/components/modal/PlanTasksCrudModal.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Modal } from "../ui/modal";
 import Pagination from "../ui/Pagination";
 import { usePager } from "../../hooks/usePager";
 import {
-  getTasksByPlanPaged, // ⬅️ requiere endpoint paginado
+  getTasksByPlanPaged,
   createTaskByPlan,
   partialUpdatePlanTask,
   deletePlanTask,
   type PlanTask,
-} from "../../api/plan and subscriptions/plan-tasks.api";
+} from "../../api/plan and subscriptions/plan-tasks.api"; 
 
 type Props = {
   isOpen: boolean;
@@ -30,8 +29,7 @@ export default function PlanTasksCrudModal({ isOpen, onClose, plan }: Props) {
   // ------- usePager: adaptador por-plan -------
   const adapter = useMemo(() => {
     return async (params: any) => {
-      if (!plan) {
-        // forma mínima para no romper el hook si no hay plan
+      if (!plan?.id) {
         return {
           count: 0,
           next: null,
@@ -39,14 +37,14 @@ export default function PlanTasksCrudModal({ isOpen, onClose, plan }: Props) {
           results: [],
         } as { count: number; next: string | null; previous: string | null; results: PlanTask[] };
       }
-      // Pasamos filtros/orden/search al server
       const page = await getTasksByPlanPaged(plan.id, {
         ...params,
         active: onlyActive ? true : undefined,
       });
-      return page; // { count, next, previous, results }
+      return page;
     };
-  }, [plan, onlyActive]);
+    // Dependemos de valores primitivos para estabilidad
+  }, [plan?.id, onlyActive]);
 
   const {
     page,
@@ -76,14 +74,15 @@ export default function PlanTasksCrudModal({ isOpen, onClose, plan }: Props) {
     return form.id ? "Editar tarea" : "Añadir tarea";
   }, [formOpen, form.id, plan]);
 
-  // Reset al abrir/cambiar plan
+  // Reset + refetch al abrir/cambiar plan
   useEffect(() => {
     if (!isOpen) return;
     setFormOpen(false);
     setForm({ name: "", description: "" });
     setPage(1);
+    void reload(); // ⬅️ asegura refetch al cambiar plan
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, plan, onlyActive]);
+  }, [isOpen, plan?.id]);
 
   // ------- acciones listado -------
   const openCreate = () => {
@@ -114,7 +113,7 @@ export default function PlanTasksCrudModal({ isOpen, onClose, plan }: Props) {
         await createTaskByPlan(plan.id, payload);
       }
       cancelForm();
-      setPage(1); // opcional: volver a la 1 para ver la nueva primero según ordering
+      setPage(1); // ver nuevas primero según ordering
       await reload();
     } catch (err: any) {
       const data = err?.response?.data;
@@ -133,7 +132,6 @@ export default function PlanTasksCrudModal({ isOpen, onClose, plan }: Props) {
     if (!confirm(`¿Eliminar la tarea "${t.name}"?`)) return;
     try {
       await deletePlanTask(t.id);
-      // si se vacía la página, retrocede una
       if (rows.length - 1 <= 0 && page > 1) setPage(page - 1);
       await reload();
     } catch (err: any) {
@@ -180,9 +178,13 @@ export default function PlanTasksCrudModal({ isOpen, onClose, plan }: Props) {
                   type="checkbox"
                   checked={onlyActive}
                   onChange={(e) => {
-                    setPage(1);
-                    setParams((p: any) => ({ ...p })); // fuerza refetch vía adapter (dep. onlyActive)
-                    setOnlyActive(e.target.checked);
+                    const checked = e.target.checked;
+                    setOnlyActive(checked);               // 1) cambia filtro
+                    setPage(1);                            // 2) reset page
+                    setParams((p: any) => ({               // 3) refetch con valor NUEVO
+                      ...p,
+                      ...(checked ? { active: true } : { active: undefined }),
+                    }));
                   }}
                   className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-700"
                 />
@@ -314,10 +316,7 @@ export default function PlanTasksCrudModal({ isOpen, onClose, plan }: Props) {
 
         {/* ---------- Footer ---------- */}
         <div className="flex items-center gap-3 mt-6 sm:justify-between">
-          {/* Paginación (solo lista) */}
-          {!formOpen && (
-            <div className="text-xs text-gray-500">Total: {count}</div>
-          )}
+          {!formOpen && <div className="text-xs text-gray-500">Total: {count}</div>}
 
           {!formOpen ? (
             <div className="ml-auto">

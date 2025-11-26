@@ -1,5 +1,6 @@
 // src/api/evidences.ts
 import axios, { AxiosInstance, AxiosRequestConfig } from "axios";
+import { getAccessToken } from "../auth/auth.api"; // 👈 ajusta la ruta si auth.ts está en otro lado
 
 const API = import.meta.env?.VITE_API_URL ?? "http://localhost:8000";
 
@@ -36,6 +37,17 @@ const EvidenceApi: AxiosInstance = axios.create({
   baseURL: `${API}/api/evidence/`, // plural + barra final
 });
 
+// 🔐 Interceptor: mete el JWT en TODOS los requests de este módulo
+EvidenceApi.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token) {
+    const cfg: any = config;
+    cfg.headers = cfg.headers || {};
+    cfg.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 /* ====================== CRUD ====================== */
 
 // GET /api/evidences/?page=&page_size=&ordering=&search=
@@ -54,34 +66,54 @@ export const createEvidence = (payload: CreateEvidenceDTO) => {
   form.append("visit", String(payload.visit));
   form.append("file", payload.file);
   if (payload.description) form.append("description", payload.description);
-  const cfg: AxiosRequestConfig = { headers: { "Content-Type": "multipart/form-data" } };
+
+  const cfg: AxiosRequestConfig = {
+    headers: { "Content-Type": "multipart/form-data" },
+  };
+
   return EvidenceApi.post<Evidence>("", form, cfg);
 };
 
 // PUT /api/evidences/{id}/
-export const updateEvidence = (id: number | string, payload: UpdateEvidenceDTO) => {
+export const updateEvidence = (
+  id: number | string,
+  payload: UpdateEvidenceDTO,
+) => {
   if (payload.file instanceof File || payload.file instanceof Blob) {
     const form = new FormData();
     if (payload.visit != null) form.append("visit", String(payload.visit));
     form.append("file", payload.file);
     if (payload.description) form.append("description", payload.description);
-    const cfg: AxiosRequestConfig = { headers: { "Content-Type": "multipart/form-data" } };
+
+    const cfg: AxiosRequestConfig = {
+      headers: { "Content-Type": "multipart/form-data" },
+    };
+
     return EvidenceApi.put<Evidence>(`${id}/`, form, cfg);
   }
+
   const { file, ...json } = payload;
   return EvidenceApi.put<Evidence>(`${id}/`, json);
 };
 
 // PATCH /api/evidences/{id}/
-export const patchEvidence = (id: number | string, payload: UpdateEvidenceDTO) => {
+export const patchEvidence = (
+  id: number | string,
+  payload: UpdateEvidenceDTO,
+) => {
   if (payload.file instanceof File || payload.file instanceof Blob) {
     const form = new FormData();
     if (payload.visit != null) form.append("visit", String(payload.visit));
     form.append("file", payload.file);
     if (payload.description) form.append("description", payload.description);
-    const cfg: AxiosRequestConfig = { headers: { "Content-Type": "multipart/form-data" } };
+
+    const cfg: AxiosRequestConfig = {
+      headers: { "Content-Type": "multipart/form-data" },
+    };
+
     return EvidenceApi.patch<Evidence>(`${id}/`, form, cfg);
   }
+
   const { file, ...json } = payload;
   return EvidenceApi.patch<Evidence>(`${id}/`, json);
 };
@@ -95,29 +127,36 @@ export const deleteEvidence = (id: number | string) =>
 // GET paginado /api/evidences/by-visit/{visit_id}/?page=&page_size=
 export const getEvidencesByVisitPaged = async (
   visitId: number | string,
-  params: Record<string, any> = {}
+  params: Record<string, any> = {},
 ) => {
-  const res = await EvidenceApi.get<PageResp<Evidence>>(`by-visit/${visitId}/`, { params });
+  const res = await EvidenceApi.get<PageResp<Evidence>>(
+    `by-visit/${visitId}/`,
+    { params },
+  );
   return res.data;
 };
 
 /** Helper: trae TODAS las páginas (ideal para carrusel sin paginación) */
 export const getEvidencesByVisitAll = async (
   visitId: number | string,
-  params: Record<string, any> = {}
+  params: Record<string, any> = {},
 ): Promise<Evidence[]> => {
   const first = await getEvidencesByVisitPaged(visitId, {
     page: 1,
     page_size: params.page_size ?? 50,
     ...params,
   });
+
   let acc: Evidence[] = [...first.results];
   let next = first.next;
+
   while (next) {
-    const res = await axios.get<PageResp<Evidence>>(next);
+    // usamos EvidenceApi para que siga enviando Authorization
+    const res = await EvidenceApi.get<PageResp<Evidence>>(next);
     acc = acc.concat(res.data.results);
     next = res.data.next;
   }
+
   return acc;
 };
 

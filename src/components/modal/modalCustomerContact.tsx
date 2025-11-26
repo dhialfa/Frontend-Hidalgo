@@ -1,178 +1,248 @@
-import { useEffect, useState } from "react";
+// src/components/customers/CustomerContactsModal.tsx
+import React, { useEffect, useState } from "react";
 import { Modal } from "../ui/modal";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
+import Badge from "../ui/badge/Badge";
 
-export type CustomerContactFormValues = {
-  name: string;
-  email: string;
-  phone?: string;
-  is_main: boolean;
-};
+import {
+  getContactsByCustomer,
+  createContactByCustomer,
+  updateCustomerContact,
+  deleteCustomerContact,
+  type CustomerContact,
+} from "../../api/customer/customer-contact.api"; // 👈 ajusta la ruta si es distinta
+import type { Customer } from "../../api/customer/customer.api";
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  /** Si hay valores iniciales -> modo editar; si no -> crear */
-  initial?: Partial<CustomerContactFormValues>;
-  /** El padre define qué hacer con los datos (create/update) */
-  onSubmit: (values: CustomerContactFormValues) => Promise<void>;
-  title?: string;
-  submitLabel?: string;
-  customerName?: string;
+  customer: Customer | null;
 };
 
-export default function CustomerContactModal({
-  isOpen,
-  onClose,
-  initial,
-  onSubmit,
-  title = "Añadir contacto",
-  submitLabel = "Guardar contacto",
-  customerName,
-}: Props) {
-  const [saving, setSaving] = useState(false);
+export default function CustomerContactsModal({ isOpen, onClose, customer }: Props) {
+  const [contacts, setContacts] = useState<CustomerContact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactForm, setContactForm] = useState<Partial<CustomerContact>>({});
+  const [editingContact, setEditingContact] = useState<CustomerContact | null>(null);
 
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [isMain, setIsMain] = useState(false);
-
-  // Cargar datos iniciales si hay (modo editar)
+  // Cargar contactos cuando se abre el modal y hay cliente
   useEffect(() => {
-    if (isOpen) {
-      setName(initial?.name ?? "");
-      setEmail(initial?.email ?? "");
-      setPhone(initial?.phone ?? "");
-      setIsMain(initial?.is_main ?? false);
-    }
-  }, [isOpen, initial]);
+    const loadContacts = async () => {
+      if (!customer || !isOpen) return;
+      setContactsLoading(true);
+      try {
+        // 🔹 getContactsByCustomer devuelve PageResp<CustomerContact>
+        const page = await getContactsByCustomer(customer.id);
+        setContacts(page.results); // ✅ aquí va .results
+      } catch {
+        setContacts([]);
+      } finally {
+        setContactsLoading(false);
+      }
+    };
 
-  const handleSubmit = async () => {
-    if (!name.trim()) return alert("El nombre es obligatorio");
-    if (!email.trim()) return alert("El correo es obligatorio");
+    loadContacts();
+  }, [customer, isOpen]);
+
+  const handleContactChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setContactForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const submitContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customer) return;
 
     try {
-      setSaving(true);
-      await onSubmit({
-        name: name.trim(),
-        email: email.trim(),
-        phone: phone.trim() || undefined,
-        is_main: isMain,
-      });
-      onClose();
-    } catch (err: any) {
-      const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Operación no completada";
-      alert(msg);
-    } finally {
-      setSaving(false);
+      if (editingContact) {
+        // 🔹 updateCustomerContact devuelve AxiosResponse<CustomerContact>
+        const res = await updateCustomerContact(editingContact.id, contactForm);
+        const updated = res.data;
+        setContacts((prev) =>
+          prev.map((ct) => (ct.id === editingContact.id ? updated : ct))
+        );
+      } else {
+        const payload = {
+          name: contactForm.name ?? "",
+          email: contactForm.email ?? "",
+          phone: contactForm.phone ?? "",
+          is_main: Boolean(contactForm.is_main),
+        };
+        if (!payload.name.trim() || !payload.email.trim()) {
+          alert("Nombre y correo son requeridos");
+          return;
+        }
+        // 🔹 createContactByCustomer también devuelve AxiosResponse<CustomerContact>
+        const res = await createContactByCustomer(customer.id, payload);
+        const created = res.data;
+        setContacts((prev) => [created, ...prev]);
+      }
+
+      setContactForm({});
+      setEditingContact(null);
+    } catch {
+      alert("Error al guardar contacto");
     }
   };
 
-  if (!isOpen) return null;
+  const editContact = (ct: CustomerContact) => {
+    setEditingContact(ct);
+    setContactForm(ct);
+  };
+
+  const deleteContact = async (id: number) => {
+    if (!confirm("¿Eliminar contacto?")) return;
+    await deleteCustomerContact(id);
+    setContacts((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const resetForm = () => {
+    setEditingContact(null);
+    setContactForm({});
+  };
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      className="max-w-[700px] p-6 lg:p-10"
+      className="max-w-3xl p-6"
     >
-      <div className="flex flex-col px-2 overflow-y-auto custom-scrollbar">
-        <div>
-          <h5 className="mb-2 font-semibold text-gray-800 modal-title text-theme-xl dark:text-white/90 lg:text-2xl">
-            {title}
-          </h5>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {title.includes("Editar")
-              ? `Actualiza la información del contacto${
-                  customerName ? ` de ${customerName}` : ""
-                }.`
-              : `Registra un nuevo contacto${
-                  customerName ? ` para ${customerName}` : ""
-                }.`}
-          </p>
-        </div>
+      <h4 className="text-lg font-semibold mb-3 dark:text-white/90">
+        {customer ? `Contactos de ${customer.name}` : "Contactos"}
+      </h4>
 
-        <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2">
-          {/* Nombre */}
-          <div className="sm:col-span-2">
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Nombre *
-            </label>
+      {!customer ? (
+        <p className="text-sm text-gray-500">
+          Selecciona un cliente para gestionar sus contactos.
+        </p>
+      ) : (
+        <>
+          <form
+            onSubmit={submitContact}
+            className="flex flex-wrap gap-3 items-end mb-6 border-b border-gray-100 pb-4 dark:border-white/[0.06]"
+          >
             <input
               type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
-              placeholder="Juan Pérez"
+              name="name"
+              placeholder="Nombre"
+              value={contactForm.name || ""}
+              onChange={handleContactChange}
+              className="dark:bg-dark-900 h-11 flex-1 rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              required
             />
-          </div>
-
-          {/* Email */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Correo electrónico *
-            </label>
             <input
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
-              placeholder="correo@empresa.com"
+              name="email"
+              placeholder="Correo"
+              value={contactForm.email || ""}
+              onChange={handleContactChange}
+              className="dark:bg-dark-900 h-11 flex-1 rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              required
             />
-          </div>
-
-          {/* Teléfono */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Teléfono
-            </label>
             <input
               type="text"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
-              placeholder="8888-8888"
+              name="phone"
+              placeholder="Teléfono"
+              value={contactForm.phone || ""}
+              onChange={handleContactChange}
+              className="dark:bg-dark-900 h-11 flex-1 rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             />
-          </div>
-
-          {/* Principal */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Principal
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-400">
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-400">
               <input
                 type="checkbox"
-                checked={isMain}
-                onChange={(e) => setIsMain(e.target.checked)}
+                name="is_main"
+                checked={Boolean(contactForm.is_main)}
+                onChange={(e) =>
+                  setContactForm((prev) => ({ ...prev, is_main: e.target.checked }))
+                }
                 className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-700"
               />
-              Marcar como principal
+              Principal
             </label>
-          </div>
-        </div>
 
-        {/* Botones */}
-        <div className="flex items-center gap-3 mt-6 sm:justify-end">
-          <button
-            onClick={onClose}
-            type="button"
-            className="flex w-full justify-center rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] sm:w-auto"
-          >
-            Cerrar
-          </button>
-          <button
-            onClick={handleSubmit}
-            type="button"
-            disabled={saving}
-            className="flex w-full justify-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60 sm:w-auto"
-          >
-            {saving ? "Guardando..." : submitLabel}
-          </button>
-        </div>
-      </div>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
+              >
+                {editingContact ? "Actualizar" : "Guardar"}
+              </button>
+              {editingContact && (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="rounded-lg border px-4 py-2.5 text-sm dark:border-gray-700"
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
+          </form>
+
+          {contactsLoading ? (
+            <p className="text-sm text-gray-500">Cargando contactos...</p>
+          ) : contacts.length === 0 ? (
+            <p className="text-sm text-gray-500">No hay contactos registrados.</p>
+          ) : (
+            <Table>
+              <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
+                <TableRow>
+                  {["Nombre", "Correo", "Teléfono", "Principal", "Acciones"].map(
+                    (h) => (
+                      <TableCell
+                        key={h}
+                        isHeader
+                        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                      >
+                        {h}
+                      </TableCell>
+                    )
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+                {contacts.map((ct) => (
+                  <TableRow key={ct.id}>
+                    <TableCell className="text-gray-800 dark:text-white/90 text-theme-sm">
+                      {ct.name}
+                    </TableCell>
+                    <TableCell className="text-gray-500 dark:text-gray-400 text-theme-sm">
+                      {ct.email}
+                    </TableCell>
+                    <TableCell className="text-gray-500 dark:text-gray-400 text-theme-sm">
+                      {ct.phone || "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge size="sm">{ct.is_main ? "Sí" : "No"}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => editContact(ct)}
+                          className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => deleteContact(ct.id)}
+                          className="rounded-lg border border-red-500 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </>
+      )}
     </Modal>
   );
 }

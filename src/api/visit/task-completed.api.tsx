@@ -1,5 +1,6 @@
 // src/api/tasksCompleted.ts
 import axios, { AxiosInstance } from "axios";
+import { getAccessToken } from "../auth/auth.api"; 
 
 /** Usa tu .env: VITE_API_URL=http://localhost:8000 */
 const API = import.meta.env?.VITE_API_URL ?? "http://localhost:8000";
@@ -42,14 +43,28 @@ const TasksCompletedApi: AxiosInstance = axios.create({
   // withCredentials: true, // <- habilítalo si usas cookies de sesión
 });
 
+// 🔐 Interceptor: mete el JWT en TODOS los requests de este módulo
+TasksCompletedApi.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token) {
+    const cfg: any = config;
+    cfg.headers = cfg.headers || {};
+    cfg.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 /* ====================== Listado paginado ====================== */
 export const getTasksCompleted = async (params: Record<string, any> = {}) => {
-  const res = await TasksCompletedApi.get<PageResp<TaskCompleted>>("", { params });
+  const res = await TasksCompletedApi.get<PageResp<TaskCompleted>>("", {
+    params,
+  });
   return res.data;
 };
 
 export const getTasksCompletedByUrl = async (url: string) => {
-  const res = await axios.get<PageResp<TaskCompleted>>(url);
+  // usamos TasksCompletedApi para que también lleve Authorization
+  const res = await TasksCompletedApi.get<PageResp<TaskCompleted>>(url);
   return res.data;
 };
 
@@ -63,13 +78,13 @@ export const createTaskCompleted = (payload: CreateTaskCompletedDTO) =>
 // PATCH parcial (no exige 'visit')
 export const updateTaskCompletedPatch = (
   id: number | string,
-  payload: UpdateTaskCompletedPATCH
+  payload: UpdateTaskCompletedPATCH,
 ) => TasksCompletedApi.patch<TaskCompleted>(`${id}/`, payload);
 
 // PUT completo (exige 'visit' y el resto de campos necesarios)
 export const updateTaskCompleted = (
   id: number | string,
-  payload: CreateTaskCompletedDTO
+  payload: CreateTaskCompletedDTO,
 ) => TasksCompletedApi.put<TaskCompleted>(`${id}/`, payload);
 
 export const deleteTaskCompleted = (id: number | string) =>
@@ -78,31 +93,35 @@ export const deleteTaskCompleted = (id: number | string) =>
 /* ====================== Relacionales ====================== */
 export const getTasksCompletedByVisitPaged = async (
   visitId: number | string,
-  params: Record<string, any> = {}
+  params: Record<string, any> = {},
 ) => {
   const res = await TasksCompletedApi.get<PageResp<TaskCompleted>>(
     `by-visit/${visitId}/`,
-    { params }
+    { params },
   );
   return res.data;
 };
 
 export const getTasksCompletedByVisitAll = async (
   visitId: number | string,
-  params: Record<string, any> = {}
+  params: Record<string, any> = {},
 ): Promise<TaskCompleted[]> => {
   const first = await getTasksCompletedByVisitPaged(visitId, {
     page: 1,
     page_size: params.page_size ?? 50,
     ...params,
   });
+
   let acc: TaskCompleted[] = [...first.results];
   let next = first.next;
+
   while (next) {
-    const res = await axios.get<PageResp<TaskCompleted>>(next);
+    // usamos TasksCompletedApi para seguir enviando Authorization
+    const res = await TasksCompletedApi.get<PageResp<TaskCompleted>>(next);
     acc = acc.concat(res.data.results);
     next = res.data.next;
   }
+
   return acc;
 };
 

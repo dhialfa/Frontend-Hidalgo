@@ -1,5 +1,9 @@
 // src/api/customers.ts
-import axios, { AxiosInstance } from "axios";
+import axios, {
+  AxiosInstance,
+  AxiosHeaders,
+} from "axios";
+import { getAccessToken } from "../auth/auth.api"; // ajusta ruta si hace falta
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
@@ -40,11 +44,10 @@ export type PageResp<T> = {
 
 // Parámetros de listado
 export type ListCustomersParams = {
-  page?: number;          // ?page=1
-  page_size?: number;     // ?page_size=25
-  search?: string;        // ?search=...
-  ordering?: string;      // ?ordering=name | -name | identification | -identification
-  // agrega aquí filtros que tu ViewSet exponga en filterset_fields (p.ej. active)
+  page?: number;        // ?page=1
+  page_size?: number;   // ?page_size=25
+  search?: string;      // ?search=...
+  ordering?: string;    // ?ordering=name | -name | identification | -identification
   active?: boolean;
   identification?: string;
 };
@@ -53,9 +56,30 @@ export type ListCustomersParams = {
 // Axios instance
 // =====================
 const CustomerApi: AxiosInstance = axios.create({
-  // importante terminar con slash
-  baseURL: `${API}/api/customers/`,
+  baseURL: `${API}/api/customers/`, // importante terminar con slash
   // timeout: 15000,
+});
+
+// 👉 Interceptor para adjuntar el JWT sin romper tipos
+CustomerApi.interceptors.request.use((config) => {
+  const token = getAccessToken();
+
+  if (token) {
+    // Si no hay headers, creamos unos nuevos de tipo AxiosHeaders
+    if (!config.headers) {
+      config.headers = new AxiosHeaders();
+    }
+
+    // Usamos AxiosHeaders#set para que TS esté contento
+    if (config.headers instanceof AxiosHeaders) {
+      config.headers.set("Authorization", `Bearer ${token}`);
+    } else {
+      // fallback por si viene como objeto plano (alguna versión rara)
+      (config.headers as any).Authorization = `Bearer ${token}`;
+    }
+  }
+
+  return config;
 });
 
 // =====================
@@ -70,16 +94,14 @@ export const getCustomers = async (params: ListCustomersParams = {}) => {
 
 // Para consumir res.next / res.previous (URL absoluta de DRF)
 export const getCustomersByUrl = async (url: string) => {
-  const res = await axios.get<PageResp<Customer>>(url);
+  const res = await CustomerApi.get<PageResp<Customer>>(url);
   return res.data;
 };
 
 // =====================
-// CRUD (compatibles con paginación global)
+// CRUD
 // =====================
 
-// Si desactivas paginación global en DRF, este endpoint devolvería un arreglo.
-// Con paginación global, evita usarlo; usa getCustomers().
 export const getAllCustomers = () => CustomerApi.get<Customer[]>("");
 
 // GET /api/customers/:id/
@@ -90,9 +112,11 @@ export const getCustomer = (id: number | string) =>
 export const createCustomer = (customer: CreateCustomerDTO) =>
   CustomerApi.post<Customer>("", customer);
 
-// PATCH /api/customers/:id/  (recomendado para edición parcial)
-export const updateCustomer = (id: number | string, customer: UpdateCustomerDTO) =>
-  CustomerApi.patch<Customer>(`${id}/`, customer);
+// PATCH /api/customers/:id/
+export const updateCustomer = (
+  id: number | string,
+  customer: UpdateCustomerDTO,
+) => CustomerApi.patch<Customer>(`${id}/`, customer);
 
 // DELETE /api/customers/:id/
 export const deleteCustomer = (id: number | string) =>

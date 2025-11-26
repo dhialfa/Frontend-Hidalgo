@@ -1,5 +1,6 @@
 // src/api/users.ts
 import axios, { AxiosInstance } from "axios";
+import { getAccessToken } from "../auth/auth.api"; // 👈 ajusta la ruta si hace falta
 
 /** Usa tu .env: VITE_API_URL=http://localhost:8000 */
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -17,7 +18,7 @@ export interface User {
   last_name?: string;
   phone?: string;
   rol?: string;
-  is_staff?: boolean;
+  is_staff: boolean;
   is_active?: boolean;
   is_superuser?: boolean;
   last_login?: string;
@@ -34,11 +35,11 @@ export type PageResp<T> = {
 
 /** Parámetros de listado (paginación + filtros comunes) */
 export type ListUsersParams = {
-  page?: number;            // ?page=1
-  page_size?: number;       // ?page_size=25
-  search?: string;          // ?search=<texto>
-  ordering?: string;        // ?ordering=username o ?ordering=-date_joined
-  // agrega aquí filtros específicos si tu ViewSet los expone (e.g., is_active)
+  page?: number;        // ?page=1
+  page_size?: number;   // ?page_size=25
+  search?: string;      // ?search=<texto>
+  ordering?: string;    // ?ordering=username o ?ordering=-date_joined
+  // filtros adicionales según tu ViewSet
   is_active?: boolean;
   is_staff?: boolean;
   rol?: string;
@@ -66,12 +67,19 @@ const UserApi: AxiosInstance = axios.create({
   // timeout: 15000,
 });
 
-// Si usas auth por JWT, puedes añadir:
-// UserApi.interceptors.request.use((config) => {
-//   const token = localStorage.getItem("access");
-//   if (token) config.headers.Authorization = `Bearer ${token}`;
-//   return config;
-// });
+// 👉 Interceptor para adjuntar el JWT en cada request
+UserApi.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  // console.log("[UserApi] token:", token);
+
+  if (token) {
+    const cfg: any = config;
+    cfg.headers = cfg.headers || {};
+    cfg.headers.Authorization = `Bearer ${token}`;
+  }
+
+  return config;
+});
 
 /* =========================
  * Helpers
@@ -95,8 +103,8 @@ export const getUsers = async (params: ListUsersParams = {}) => {
 
 /** Navegar usando URL absoluta de DRF (next/previous) */
 export const getUsersByUrl = async (url: string) => {
-  // Permite consumir directly res.next/res.previous de DRF
-  const res = await axios.get<PageResp<User>>(url);
+  // Usamos UserApi para que también lleve Authorization
+  const res = await UserApi.get<PageResp<User>>(url);
   return res.data;
 };
 

@@ -1,5 +1,6 @@
 // src/api/plan/plan-tasks.api.ts
 import axios, { AxiosInstance } from "axios";
+import { getAccessToken } from "../auth/auth.api"; // 👈 ajusta si tu auth.ts está en otra ruta
 
 /** Usa tu .env: VITE_API_URL=http://localhost:8000 */
 const API = import.meta.env?.VITE_API_URL ?? "http://localhost:8000";
@@ -53,6 +54,17 @@ const PlanTaskApi: AxiosInstance = axios.create({
   baseURL: `${API}/api/plan-tasks/`, // barra final como en users.ts
 });
 
+// 🔐 Interceptor: mete el JWT en TODOS los requests de este módulo
+PlanTaskApi.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token) {
+    const cfg: any = config;
+    cfg.headers = cfg.headers || {};
+    cfg.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 /* =======================
    Helpers
 ======================= */
@@ -71,12 +83,14 @@ const ensureId = (id: number | string) => {
 /** GET /api/plan-tasks/?page=&page_size=&search=&ordering=&active=&plan= */
 export const getPlanTasks = async (params: ListPlanTasksParams = {}) => {
   const res = await PlanTaskApi.get<PageResp<PlanTask>>("", { params });
-  return res.data; // ⬅️ devolvemos data (no AxiosResponse), igual que users.ts
+  return res.data; // ⬅️ devolvemos data (no AxiosResponse)
 };
 
 /** Navegar usando URL absoluta de DRF (next/previous) */
 export const getPlanTasksByUrl = async (url: string) => {
-  const res = await axios.get<PageResp<PlanTask>>(url);
+  // Usamos PlanTaskApi para que también lleve Authorization,
+  // aunque la URL sea absoluta (Axios ignora baseURL en ese caso)
+  const res = await PlanTaskApi.get<PageResp<PlanTask>>(url);
   return res.data;
 };
 
@@ -96,12 +110,16 @@ export const createPlanTask = (payload: CreatePlanTaskDTO) =>
   PlanTaskApi.post<PlanTask>("", payload);
 
 // PUT /api/plan-tasks/{id}/
-export const updatePlanTask = (id: number | string, payload: UpdatePlanTaskDTO) =>
-  PlanTaskApi.put<PlanTask>(`${ensureId(id)}/`, payload);
+export const updatePlanTask = (
+  id: number | string,
+  payload: UpdatePlanTaskDTO,
+) => PlanTaskApi.put<PlanTask>(`${ensureId(id)}/`, payload);
 
 // PATCH /api/plan-tasks/{id}/
-export const partialUpdatePlanTask = (id: number | string, payload: UpdatePlanTaskDTO) =>
-  PlanTaskApi.patch<PlanTask>(`${ensureId(id)}/`, payload);
+export const partialUpdatePlanTask = (
+  id: number | string,
+  payload: UpdatePlanTaskDTO,
+) => PlanTaskApi.patch<PlanTask>(`${ensureId(id)}/`, payload);
 
 // DELETE /api/plan-tasks/{id}/
 export const deletePlanTask = (id: number | string) =>
@@ -118,7 +136,10 @@ export const restorePlanTask = (id: number | string) =>
 /** NO paginado (como lo tenías):
  *  GET /api/plan-tasks/by-plan/{plan_id}/?active=true
  */
-export const getTasksByPlan = (planId: number | string, onlyActive = false) =>
+export const getTasksByPlan = (
+  planId: number | string,
+  onlyActive = false,
+) =>
   PlanTaskApi.get<PlanTask[]>(`by-plan/${planId}/`, {
     params: onlyActive ? { active: "true" } : {},
   });
@@ -128,11 +149,12 @@ export const getTasksByPlan = (planId: number | string, onlyActive = false) =>
  */
 export const getTasksByPlanPaged = async (
   planId: number | string,
-  params: Omit<ListPlanTasksParams, "plan"> = {}
+  params: Omit<ListPlanTasksParams, "plan"> = {},
 ) => {
-  const res = await PlanTaskApi.get<PageResp<PlanTask>>(`by-plan/${planId}/`, {
-    params,
-  });
+  const res = await PlanTaskApi.get<PageResp<PlanTask>>(
+    `by-plan/${planId}/`,
+    { params },
+  );
   return res.data;
 };
 
@@ -141,8 +163,9 @@ export const getTasksByPlanPaged = async (
  */
 export const createTaskByPlan = (
   planId: number | string,
-  payload: Omit<CreatePlanTaskDTO, "plan">
-) => PlanTaskApi.post<PlanTask>(`by-plan/${planId}/`, {
-  ...payload,
-  plan: Number(planId),
-});
+  payload: Omit<CreatePlanTaskDTO, "plan">,
+) =>
+  PlanTaskApi.post<PlanTask>(`by-plan/${planId}/`, {
+    ...payload,
+    plan: Number(planId),
+  });

@@ -5,15 +5,14 @@ import {
   getAllPlanSubscriptions,
   type PlanSubscription,
 } from "../../api/plan and subscriptions/plan-subscriptions.api";
+import { useAuth } from "../../auth/AuthContext"; 
 
-/** =========================
- * Tipos de backend
- * ========================= */
+//Tipos de backend
 export type VisitStatus = "scheduled" | "in_progress" | "completed" | "canceled";
 
 export type VisitBackendDTO = {
   subscription: number;        // id (interno, no se muestra)
-  user: number;                // id (input visible)
+  user: number;                // id (tomado del usuario logueado)
   start: string;               // ISO con Z
   end: string | null;          // ISO con Z | null
   status: VisitStatus;
@@ -25,7 +24,7 @@ export type VisitBackendDTO = {
 export type VisitModalInitial = {
   id?: number | null;          // para saber si es edición
   subscriptionId?: number | null; // si viene preseleccionada
-  userId?: number | null;
+  userId?: number | null;      // (ya no se usa para edición, pero lo dejamos por compat)
   startISO?: string | null;    // ISO inicial si edita
   endISO?: string | null;
   status?: VisitStatus;
@@ -60,7 +59,6 @@ function useDebounce<T>(value: T, delay = 300) {
 
 /** Convierte pares fecha/hora a ISO Z (UTC) */
 function toIsoZ(dateYYYYMMDD: string, timeHHMM: string): string {
-  // Construimos un Date con componentes, asumimos hora local y lo emitimos en UTC
   const [y, m, d] = dateYYYYMMDD.split("-").map(Number);
   const [hh, mm] = timeHHMM.split(":").map(Number);
   const dt = new Date(Date.UTC(y, (m - 1), d, hh || 0, mm || 0, 0, 0));
@@ -71,7 +69,6 @@ function toIsoZ(dateYYYYMMDD: string, timeHHMM: string): string {
 function fromIso(iso?: string | null): { date: string; time: string } {
   if (!iso) return { date: "", time: "" };
   const d = new Date(iso);
-  // Usamos UTC para consistencia con el backend (Z)
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(d.getUTCDate()).padStart(2, "0");
@@ -91,9 +88,12 @@ export default function VisitModal({
 }: Props) {
   const isEdit = !!initial.id;
 
+  // 👇 Usuario logueado desde AuthContext
+  const { user } = useAuth();
+  const loggedUserId = user?.id ?? null;
+
   // --------- estado principal (controlado por UI) ----------
   const [subscriptionId, setSubscriptionId] = useState<number | null>(initial.subscriptionId ?? null);
-  const [userId, setUserId] = useState<string>(initial.userId ? String(initial.userId) : "");
   const [status, setStatus] = useState<VisitStatus>(initial.status ?? "scheduled");
   const [siteAddress, setSiteAddress] = useState<string>(initial.site_address ?? "");
   const [notes, setNotes] = useState<string>(initial.notes ?? "");
@@ -108,6 +108,9 @@ export default function VisitModal({
   const [endDate, setEndDate] = useState<string>(initEnd.date || "");
   const [endTime, setEndTime] = useState<string>(initEnd.time || "");
 
+  // --------- errores de formulario / backend ----------
+  const [formError, setFormError] = useState<string | null>(null);
+
   // --------- buscador de suscripción por nombre -----------
   const [subSearch, setSubSearch] = useState<string>("");
   const [subsLoading, setSubsLoading] = useState(false);
@@ -118,7 +121,6 @@ export default function VisitModal({
   useEffect(() => {
     // Reset al abrir o cambiar initial
     setSubscriptionId(initial.subscriptionId ?? null);
-    setUserId(initial.userId ? String(initial.userId) : "");
     setStatus(initial.status ?? "scheduled");
     setSiteAddress(initial.site_address ?? "");
     setNotes(initial.notes ?? "");
@@ -135,9 +137,10 @@ export default function VisitModal({
     setSubSearch("");
     setSubsResults([]);
     setSubsError(null);
+    setFormError(null); // limpiamos errores cuando se abre/reset
   }, [initial, isOpen]);
 
-  // Buscar y *mostrar solo nombres* (no IDs) — los IDs se guardan internamente
+  // Buscar y *mostrar solo nombres* (no IDs)
   useEffect(() => {
     async function run() {
       if (!debouncedSearch) {
@@ -155,7 +158,9 @@ export default function VisitModal({
           ? (data as any).results
           : [];
         const term = debouncedSearch.toLowerCase();
-        const filtered = list.filter((s) => (s.customer_info?.name || "").toLowerCase().includes(term));
+        const filtered = list.filter((s) =>
+          (s.customer_info?.name || "").toLowerCase().includes(term)
+        );
         setSubsResults(filtered.slice(0, 15));
       } catch (err) {
         console.error(err);
@@ -164,7 +169,7 @@ export default function VisitModal({
         setSubsLoading(false);
       }
     }
-    run();
+    void run();
   }, [debouncedSearch]);
 
   async function resolveCustomerNameFromSubscription(id: number) {
@@ -189,33 +194,90 @@ export default function VisitModal({
   const canSave = useMemo(() => {
     return (
       !!subscriptionId &&
-      !!userId &&
+      !!loggedUserId &&                   
       !!startDate &&
       !!startTime &&
-      (status !== "canceled" || (status === "canceled" && cancelReason.trim().length > 0))
+      (status !== "canceled" ||
+        (status === "canceled" && cancelReason.trim().length > 0))
     );
-  }, [subscriptionId, userId, startDate, startTime, status, cancelReason]);
+  }, [subscriptionId, loggedUserId, startDate, startTime, status, cancelReason]);
 
   async function handleSave() {
-    if (!canSave) {
-      alert("Completa los campos requeridos.");
+    setFormError(null);
+
+    if (!loggedUserId) {
+      setFormError("No hay usuario autenticado para asociar a la visita.");
       return;
     }
-    const start = toIsoZ(startDate, startTime);
-    const end =
+
+    if (!canSave) {
+      setFormError("Completa los campos requeridos antes de guardar.");
+      return;
+    }
+
+    // Construimos las fechas/hora en ISO
+    const startISO = toIsoZ(startDate, startTime);
+    const endISO =
       endDate && endTime ? toIsoZ(endDate, endTime) : null;
+
+    // Validación en front: inicio NO puede ser después del fin
+    if (endISO) {
+      const startDateObj = new Date(startISO);
+      const endDateObj = new Date(endISO);
+      if (endDateObj < startDateObj) {
+        setFormError("La fecha/hora de inicio no puede ser posterior a la fecha/hora de fin.");
+        return;
+      }
+    }
 
     const payload: VisitBackendDTO = {
       subscription: Number(subscriptionId),
-      user: Number(userId),
-      start,
-      end,
+      user: loggedUserId,          // 👈 SIEMPRE el usuario logueado
+      start: startISO,
+      end: endISO,
       status,
       site_address: siteAddress || "",
       notes: notes || "",
-      cancel_reason: status === "canceled" ? (cancelReason || "") : "",
+      cancel_reason:
+        status === "canceled" ? (cancelReason || "") : "",
     };
-    await onSave(payload, { id: initial.id ?? null });
+
+    try {
+      await onSave(payload, { id: initial.id ?? null });
+    } catch (err: any) {
+      console.error(err);
+      // Intentamos extraer mensajes del backend (DRF)
+      const resp = err?.response?.data;
+
+      if (!resp) {
+        setFormError("Ocurrió un error al guardar la visita.");
+        return;
+      }
+
+      if (typeof resp === "string") {
+        setFormError(resp);
+        return;
+      }
+
+      if (resp.detail) {
+        setFormError(String(resp.detail));
+        return;
+      }
+
+      // Posible estructura: { field: ["msg1", "msg2"], ... }
+      const messages: string[] = [];
+      Object.entries(resp).forEach(([field, value]) => {
+        if (Array.isArray(value)) {
+          messages.push(`${field}: ${value.join(" ")}`);
+        } else if (typeof value === "string") {
+          messages.push(`${field}: ${value}`);
+        }
+      });
+
+      setFormError(
+        messages.join(" | ") || "No se pudo guardar la visita."
+      );
+    }
   }
 
   return (
@@ -241,6 +303,13 @@ export default function VisitModal({
           )}
         </div>
 
+        {/* Bloque de errores de formulario / backend */}
+        {formError && (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
+            {formError}
+          </div>
+        )}
+
         <div className="mt-6 grid gap-6 md:grid-cols-2">
           {/* IZQUIERDA: Selección de suscripción (solo nombres) + cliente */}
           <div className="space-y-4">
@@ -258,13 +327,19 @@ export default function VisitModal({
               <div className="mt-2 rounded-lg border border-gray-200 dark:border-gray-800">
                 <div className="max-h-56 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
                   {subsLoading && (
-                    <div className="p-3 text-sm text-gray-500 dark:text-gray-400">Buscando…</div>
+                    <div className="p-3 text-sm text-gray-500 dark:text-gray-400">
+                      Buscando…
+                    </div>
                   )}
                   {subsError && (
-                    <div className="p-3 text-sm text-red-600 dark:text-red-400">{subsError}</div>
+                    <div className="p-3 text-sm text-red-600 dark:text-red-400">
+                      {subsError}
+                    </div>
                   )}
                   {!subsLoading && !subsError && subsResults.length === 0 && subSearch && (
-                    <div className="p-3 text-sm text-gray-500 dark:text-gray-400">Sin resultados</div>
+                    <div className="p-3 text-sm text-gray-500 dark:text-gray-400">
+                      Sin resultados
+                    </div>
                   )}
                   {!subsLoading &&
                     subsResults.map((s) => (
@@ -275,6 +350,8 @@ export default function VisitModal({
                           setSubscriptionId(s.id);
                           setCustomerName(s.customer_info?.name || "Sin cliente");
                           setSubCache((prev) => ({ ...prev, [s.id]: s }));
+                          setSubSearch("");
+                          setSubsResults([]);
                         }}
                         className="block w-full p-3 text-left hover:bg-gray-50 dark:hover:bg-white/[0.04]"
                         title={`Seleccionar ${s.customer_info?.name ?? ""}`}
@@ -284,7 +361,6 @@ export default function VisitModal({
                             {s.customer_info?.name ?? "—"}
                           </div>
                           <div className="truncate text-xs text-gray-500 dark:text-gray-400">
-                            {/* mostramos metadatos útiles, sin IDs */}
                             Inicio: {s.start_date} · Estado: {s.status}
                           </div>
                         </div>
@@ -309,45 +385,28 @@ export default function VisitModal({
               </div>
             )}
 
-            {/* Si se ingresa manualmente un ID (no se muestra en UI pública) */}
-            <details className="rounded-lg border border-gray-200 p-2 text-xs text-gray-500 open:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:open:bg-white/[0.03]">
-              <summary className="cursor-pointer select-none">Ingresar ID de suscripción manualmente</summary>
-              <div className="mt-2 flex items-center gap-2">
+            {/* Usuario asignado (solo lectura) */}
+            {user && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+                  Tecnico asignado
+                </label>
                 <input
-                  type="number"
-                  value={subscriptionId ?? ""}
-                  onChange={(e) => {
-                    const val = e.target.value ? Number(e.target.value) : null;
-                    setSubscriptionId(val);
-                    setCustomerName("");
-                  }}
-                  onBlur={(e) => {
-                    const val = Number(e.target.value);
-                    if (val) resolveCustomerNameFromSubscription(val);
-                  }}
-                  className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-2 text-sm text-gray-800 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                  placeholder="ID interno"
+                  type="text"
+                  disabled
+                  value={
+                    user.first_name || user.last_name
+                      ? `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim()
+                      : user.username ?? `ID ${user.id}`
+                  }
+                  className="h-11 w-full rounded-lg border border-gray-300 bg-gray-100 px-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900/60 dark:text-white/80"
                 />
               </div>
-            </details>
+            )}
           </div>
 
           {/* DERECHA: Datos de la visita */}
           <div className="space-y-4">
-            {/* User ID (visible por ahora, como pediste) */}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                ID de usuario
-              </label>
-              <input
-                type="number"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                placeholder="Ej. 3"
-                className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-              />
-            </div>
-
             {/* Start (fecha + hora) */}
             <div className="grid grid-cols-2 gap-2">
               <div>

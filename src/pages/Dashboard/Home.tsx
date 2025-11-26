@@ -8,6 +8,7 @@ import PageMeta from "../../components/common/PageMeta";
 import { useDashboard } from "../../hooks/useDashboard";
 
 export default function Home() {
+  // Traemos los datos del backend
   const { data, loading, error } = useDashboard();
 
   if (loading) {
@@ -15,10 +16,14 @@ export default function Home() {
   }
 
   if (error || !data) {
-    return <p className="p-4 text-red-500">Error cargando datos</p>;
+    return (
+      <p className="p-4 text-red-500">
+        No se pudieron cargar las estadísticas del dashboard.
+      </p>
+    );
   }
 
-  const totals = data.totals;
+  const { totals } = data;
 
   return (
     <>
@@ -29,12 +34,14 @@ export default function Home() {
 
       <div className="grid grid-cols-12 gap-4 md:gap-6">
         <div className="col-span-12 space-y-6 xl:col-span-7">
+          {/* Aquí ya usamos los datos reales del backend */}
           <EcommerceMetrics
             totalCustomers={totals.total_customers}
             activeCustomers={totals.active_customers}
             activeSubscriptions={totals.active_subscriptions}
           />
 
+          {/* De momento dejamos los gráficos con datos mock */}
           <MonthlySalesChart />
         </div>
 
