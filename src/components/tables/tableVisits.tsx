@@ -67,7 +67,7 @@ function fmtDate(date?: string | null) {
 
 function uniqNumbers(arr: Array<number | null | undefined>): number[] {
   return Array.from(
-    new Set(arr.filter((x): x is number => typeof x === "number"))
+    new Set(arr.filter((x): x is number => typeof x === "number")),
   );
 }
 
@@ -115,7 +115,7 @@ export default function VisitsTable({
 
   // Cache de suscripciones (mismo tipo que espera VisitModal)
   const [subCache, setSubCache] = useState<Record<number, PlanSubscription>>(
-    {}
+    {},
   );
 
   // MODAL CRUD
@@ -151,7 +151,7 @@ export default function VisitsTable({
   const headerTitle = useMemo(
     () =>
       title ?? (mode === "byCustomer" ? "Visitas por cliente" : "Visitas"),
-    [mode, title]
+    [mode, title],
   );
 
   // Loader con paginación DRF
@@ -187,7 +187,7 @@ export default function VisitsTable({
       const missing = subIds.filter((id) => !(id in subCache));
       if (missing.length) {
         const fetchedEntries = await Promise.allSettled(
-          missing.map((id) => getPlanSubscription(id))
+          missing.map((id) => getPlanSubscription(id)),
         );
         const next: Record<number, PlanSubscription> = {};
         fetchedEntries.forEach((r, i) => {
@@ -217,7 +217,7 @@ export default function VisitsTable({
 
   const pageCount = useMemo(
     () => Math.max(1, Math.ceil((count || 0) / pageSizeState)),
-    [count, pageSizeState]
+    [count, pageSizeState],
   );
 
   // Acciones rápidas
@@ -301,8 +301,27 @@ export default function VisitsTable({
 
   const onSaveFromModal = async (
     dto: VisitBackendDTO,
-    opts?: { id?: number | null }
+    opts?: { id?: number | null },
   ) => {
+    // --- Validación: la fecha/hora de fin no puede ser anterior a la de inicio ---
+    const rawStart =
+      (dto as any).start ?? (dto as any).startISO ?? null;
+    const rawEnd =
+      (dto as any).end ?? (dto as any).endISO ?? null;
+
+    if (rawStart && rawEnd) {
+      const startDate = new Date(rawStart);
+      const endDate = new Date(rawEnd);
+
+      if (endDate.getTime() < startDate.getTime()) {
+        alert(
+          "La fecha y hora de finalización no puede ser anterior a la fecha y hora de inicio de la visita.",
+        );
+        return; // ⛔ No guardamos
+      }
+    }
+    // --- fin validación ---
+
     if (opts?.id) {
       // Usamos PATCH para evitar problemas de PUT parcial (400)
       await patchVisit(opts.id, dto as any);
@@ -362,7 +381,7 @@ export default function VisitsTable({
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-6 border-b border-gray-100 dark:border-white/[0.06]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4 sm:px-6 dark:border-white/[0.06]">
         <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">
           {headerTitle}
         </h3>
@@ -449,7 +468,7 @@ export default function VisitsTable({
                   <TableCell
                     key={c.key}
                     isHeader
-                    className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                    className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400"
                   >
                     {c.label}
                   </TableCell>
@@ -511,25 +530,25 @@ export default function VisitsTable({
                             {v.id}
                           </TableCell>
                         )}
-                        <TableCell className="px-4 py-3 text-gray-800 dark:text-gray-100 text-theme-sm font-medium">
+                        <TableCell className="px-4 py-3 text-theme-sm font-medium text-gray-800 dark:text-gray-100">
                           {cName}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm">
+                        <TableCell className="px-4 py-3 text-theme-sm text-gray-600 dark:text-gray-400">
                           {fmtDate(start)}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm">
+                        <TableCell className="px-4 py-3 text-theme-sm text-gray-600 dark:text-gray-400">
                           {fmtDate(end)}
                         </TableCell>
                         <TableCell className="px-4 py-3">
                           <StatusPill status={state} />
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm">
+                        <TableCell className="px-4 py-3 text-theme-sm text-gray-600 dark:text-gray-400">
                           {siteAddress || "—"}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-gray-600 dark:text-gray-400 text-theme-sm truncate max-w-[240px]">
+                        <TableCell className="max-w-[240px] truncate px-4 py-3 text-theme-sm text-gray-600 dark:text-gray-400">
                           {v.notes || "—"}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-gray-400 text-xs select-none">
+                        <TableCell className="select-none px-4 py-3 text-xs text-gray-400">
                           {isOpen ? "▲" : "▼"}
                         </TableCell>
                       </tr>
@@ -547,7 +566,7 @@ export default function VisitsTable({
                                   void doStart(v.id);
                                 }}
                                 disabled={actingId === v.id}
-                                className="rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 px-3 py-1.5 text-xs font-semibold hover:bg-amber-200 disabled:opacity-60"
+                                className="rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-200 disabled:opacity-60 dark:bg-amber-500/20 dark:text-amber-300"
                               >
                                 Iniciar
                               </button>
@@ -557,7 +576,7 @@ export default function VisitsTable({
                                   void doComplete(v.id);
                                 }}
                                 disabled={actingId === v.id}
-                                className="rounded-lg bg-green-100 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-200 disabled:opacity-60"
+                                className="rounded-lg bg-green-100 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-200 disabled:opacity-60 dark:bg-emerald-500/20 dark:text-emerald-300"
                               >
                                 Completar
                               </button>
@@ -625,7 +644,7 @@ export default function VisitsTable({
       </div>
 
       {/* Paginación */}
-      <div className="flex items-centerjustify-between px-5 py-3 sm:px-6 border-t border-gray-100 dark:border-white/[0.06]">
+      <div className="flex items-center justify-between border-t border-gray-100 px-5 py-3 sm:px-6 dark:border-white/[0.06]">
         <span className="text-xs text-gray-500 dark:text-gray-400">
           Página {page} de {pageCount} • Total: {count}
         </span>
@@ -643,7 +662,7 @@ export default function VisitsTable({
       </div>
 
       {err && (
-        <div className="px-5 py-3 text-sm text-red-600 dark:text-red-400 border-t border-red-100 dark:border-red-900/30">
+        <div className="border-t border-red-100 px-5 py-3 text-sm text-red-600 dark:border-red-900/30 dark:text-red-400">
           {err}
         </div>
       )}

@@ -1,6 +1,6 @@
 // src/api/http.ts
 import axios from "axios";
-import { getAccessToken } from "./auth/auth.api";
+import { getAccessToken } from "./auth.api";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
