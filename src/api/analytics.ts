@@ -1,55 +1,68 @@
-// src/api/analytics.ts
 import axios from "axios";
+import { getAccessToken } from "./auth/auth.api";
 
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
-// ===== Tipos que vienen del backend =====
-export interface DashboardTotals {
-  total_customers: number;
-  active_customers: number;
-  active_subscriptions: number;
-  visits_planned_today: number;
-  visits_completed_today: number;
-  visits_completed_range: number;
-  estimated_monthly_revenue: number;
+export interface VisitsByDay {
+  date: string; // "YYYY-MM-DD"
+  count: number;
 }
 
-export interface VisitStatusCount {
+export interface VisitsByStatusItem {
   status: string;
   count: number;
 }
 
-export interface VisitsByDay {
-  date: string;
-  count: number;
+export interface LastVisitItem {
+  id: number;
+  customer_name: string;
+  plan_name: string;
+  status: string;
+  start: string; // ISO
+  end: string | null;
 }
 
-export interface DashboardOverview {
-  range: {
-    from: string;
-    to: string;
-  };
-  totals: DashboardTotals;
-  charts: {
-    visits_by_status: VisitStatusCount[];
-    visits_by_day: VisitsByDay[];
-  };
+export interface DashboardSummary {
+  total_customers: number;
+  active_subscriptions: number;
+  total_plans: number;
+  upcoming_visits: number;
 }
 
-// ===== Llamada al endpoint del backend =====
-export async function fetchDashboardOverview(
-  token: string,
-  params?: { from?: string; to?: string }
-): Promise<DashboardOverview> {
-  const res = await axios.get<DashboardOverview>(
-    `${API_BASE_URL}/api/analytics/overview/`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      params,
-    }
-  );
+export interface DashboardOverviewResponse {
+  summary: DashboardSummary;
+  visits_by_status: VisitsByStatusItem[];
+  last_visits: LastVisitItem[];
+}
 
+const client = axios.create({
+  baseURL: API,
+});
+
+client.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export async function getDashboardOverview() {
+  const res = await client.get<DashboardOverviewResponse>("/api/dashboard/overview/");
+  return res.data;
+}
+
+export async function getVisitsByDay(days = 30) {
+  const res = await client.get<VisitsByDay[]>("/api/dashboard/visits-by-day/", {
+    params: { days },
+  });
+  return res.data;
+}
+
+export async function getVisitsByStatus(days = 30) {
+  const res = await client.get<VisitsByStatusItem[]>("/api/dashboard/visits-by-status/", {
+    params: { days },
+  });
   return res.data;
 }

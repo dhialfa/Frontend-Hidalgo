@@ -51,20 +51,24 @@ const STATUS_LABEL: Record<VisitStatus, string> = {
   canceled: "Cancelada",
 };
 
+/**
+ * Formatea fechas usando la zona horaria del navegador del usuario.
+ */
 function fmtDate(date?: string | null) {
   if (!date) return "—";
+
   const d = new Date(date);
-  return d.toLocaleString();
+
+  return d.toLocaleString(undefined, {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
 }
 
 function uniqNumbers(arr: Array<number | null | undefined>): number[] {
   return Array.from(
     new Set(arr.filter((x): x is number => typeof x === "number"))
   );
-}
-
-function toDateOnly(isoLike?: string | null) {
-  return (isoLike || "").slice(0, 10);
 }
 
 function ActionSeparator() {
@@ -77,6 +81,7 @@ function ActionSeparator() {
 }
 
 type PlanTaskLite = { id: number; name: string; description?: string };
+
 type PlanSubscriptionWithDetail = PlanSubscription & {
   plan_detail?: { tasks?: PlanTaskLite[] };
   customer_info?: { name?: string };
@@ -108,10 +113,10 @@ export default function VisitsTable({
   // Acción rápida en curso
   const [actingId, setActingId] = useState<number | null>(null);
 
-  // Cache suscripciones
-  const [subCache, setSubCache] = useState<
-    Record<number, PlanSubscriptionWithDetail>
-  >({});
+  // Cache de suscripciones (mismo tipo que espera VisitModal)
+  const [subCache, setSubCache] = useState<Record<number, PlanSubscription>>(
+    {}
+  );
 
   // MODAL CRUD
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -167,7 +172,7 @@ export default function VisitsTable({
           ? await getVisitsByCustomer(customerId!, params)
           : await getVisits(params);
 
-      const data: any = res.data; // si tu API cambiara a devolver PageResp directo, aquí sería sólo `const data = res;`
+      const data: any = res.data;
       const results: Visit[] = Array.isArray(data)
         ? data
         : Array.isArray(data?.results)
@@ -184,10 +189,10 @@ export default function VisitsTable({
         const fetchedEntries = await Promise.allSettled(
           missing.map((id) => getPlanSubscription(id))
         );
-        const next: Record<number, PlanSubscriptionWithDetail> = {};
+        const next: Record<number, PlanSubscription> = {};
         fetchedEntries.forEach((r, i) => {
           if (r.status === "fulfilled") {
-            next[missing[i]] = r.value.data as PlanSubscriptionWithDetail;
+            next[missing[i]] = r.value.data as PlanSubscription;
           }
         });
         if (Object.keys(next).length) {
@@ -249,12 +254,17 @@ export default function VisitsTable({
 
   // Crear / Editar
   const openCreate = () => {
-    const today = toDateOnly(new Date().toISOString());
+    // Tomamos la hora local del navegador del usuario
+    const now = new Date();
+    // Ajustamos a las 08:00 hora local del usuario
+    now.setHours(8, 0, 0, 0);
+
     setModalInitial({
       id: null,
       subscriptionId: null,
       userId: null,
-      startISO: `${today}T08:00:00.000Z`,
+      // ISO (UTC) del instante 08:00 local; el backend lo guardará con TZ
+      startISO: now.toISOString(),
       endISO: null,
       status: "scheduled",
       site_address: "",
@@ -267,10 +277,12 @@ export default function VisitsTable({
 
   const openEdit = (v: Visit) => {
     const subId = (v as any).subscription ?? null;
-    const cName =
-      subId && subCache[subId]?.customer_info?.name
-        ? subCache[subId]!.customer_info!.name || ""
-        : "";
+
+    const sub = subId
+      ? (subCache[subId] as PlanSubscriptionWithDetail | undefined)
+      : undefined;
+
+    const cName = sub?.customer_info?.name || "";
 
     setModalInitial({
       id: v.id,
@@ -476,10 +488,11 @@ export default function VisitsTable({
                   const state = (v.status || "scheduled") as VisitStatus;
 
                   const subId = (v as any).subscription ?? null;
-                  const cName =
-                    subId && subCache[subId]?.customer_info?.name
-                      ? subCache[subId]!.customer_info!.name || "—"
-                      : "—";
+                  const sub = subId
+                    ? (subCache[subId] as PlanSubscriptionWithDetail | undefined)
+                    : undefined;
+
+                  const cName = sub?.customer_info?.name || "—";
 
                   const isOpen = expandedRow === v.id;
 
@@ -612,7 +625,7 @@ export default function VisitsTable({
       </div>
 
       {/* Paginación */}
-      <div className="flex items-center justify-between px-5 py-3 sm:px-6 border-t border-gray-100 dark:border-white/[0.06]">
+      <div className="flex items-centerjustify-between px-5 py-3 sm:px-6 border-t border-gray-100 dark:border-white/[0.06]">
         <span className="text-xs text-gray-500 dark:text-gray-400">
           Página {page} de {pageCount} • Total: {count}
         </span>

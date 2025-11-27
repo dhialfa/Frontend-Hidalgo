@@ -1,52 +1,67 @@
 // src/hooks/useDashboard.ts
 import { useEffect, useState } from "react";
 import {
-  fetchDashboardOverview,
-  type DashboardOverview,
+  getDashboardOverview,
+  getVisitsByDay,
+  getVisitsByStatus,
+  type DashboardOverviewResponse,
+  type VisitsByDay,
+  type VisitsByStatusItem,
 } from "../api/analytics";
 
-interface UseDashboardResult {
-  data: DashboardOverview | null;
+interface DashboardState {
   loading: boolean;
-  error: boolean;
-  reload: () => void;
+  error: string | null;
+  overview: DashboardOverviewResponse | null;
+  visitsByDay: VisitsByDay[];
+  visitsByStatus: VisitsByStatusItem[];
 }
 
-export function useDashboard(): UseDashboardResult {
-  const [data, setData] = useState<DashboardOverview | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
-
-  async function loadDashboard() {
-    try {
-      setLoading(true);
-      setError(false);
-
-      // OJO: este token es el access token JWT que ya usas
-      const token = localStorage.getItem("token");
-
-      if (!token) {
-        console.error("No hay token en localStorage");
-        setError(true);
-        setLoading(false);
-        return;
-      }
-
-      // AQUÍ estaba uno de los errores: hay que pasar solo el string
-      const response = await fetchDashboardOverview(token);
-      setData(response);
-    } catch (e) {
-      console.error("Error cargando dashboard:", e);
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }
+export function useDashboard(days = 30): DashboardState {
+  const [state, setState] = useState<DashboardState>({
+    loading: true,
+    error: null,
+    overview: null,
+    visitsByDay: [],
+    visitsByStatus: [],
+  });
 
   useEffect(() => {
-    // Cargamos al montar el componente
-    loadDashboard();
-  }, []);
+    let cancelled = false;
 
-  return { data, loading, error, reload: loadDashboard };
+    async function load() {
+      try {
+        const [overview, visitsByDay, visitsByStatus] = await Promise.all([
+          getDashboardOverview(),
+          getVisitsByDay(days),
+          getVisitsByStatus(days),
+        ]);
+
+        if (cancelled) return;
+
+        setState({
+          loading: false,
+          error: null,
+          overview,
+          visitsByDay,
+          visitsByStatus,
+        });
+      } catch (err: any) {
+        if (cancelled) return;
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: err?.message ?? "Error cargando dashboard",
+        }));
+      }
+    }
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [days]);
+
+  return state;
 }

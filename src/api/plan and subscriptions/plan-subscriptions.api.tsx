@@ -13,20 +13,36 @@ export interface PlanSubscription {
   customer: number;
   plan: number;
   start_date: string; // "YYYY-MM-DD"
-  status: string;     // "active" | "inactive" | "cancelled" (según tu backend)
+  status: "active" | "inactive" | "cancelled"; // más estricto según tu backend
   notes?: string;
   active: boolean;
   created_at: string | null;
   updated_at: string | null;
   created_by?: number | null;
   updated_by?: number | null;
+
+  // 🔹 Info resumida del cliente que viene en el JSON (customer_info)
   customer_info?: {
     id: number;
     name: string;
     identification?: string;
     email?: string;
     phone?: string;
-  };
+  } | null;
+
+  // 🔹 Detalle del plan que viene en el JSON (plan_detail)
+  plan_detail?: {
+    id: number;
+    name: string;
+    description: string;
+    price: string;
+    active: boolean;
+    tasks: {
+      id: number;
+      name: string;
+      description: string;
+    }[];
+  } | null;
 }
 
 export interface CreatePlanSubscriptionDTO {

@@ -1,3 +1,4 @@
+// src/components/ecommerce/EcommerceMetrics.tsx
 import {
   ArrowUpIcon,
   BoxIconLine,
@@ -5,9 +6,12 @@ import {
 } from "../../icons";
 import Badge from "../ui/badge/Badge";
 
-type Props = {
+export type EcommerceMetricsProps = {
+  /** Total de clientes en el sistema */
   totalCustomers: number;
+  /** Clientes activos (con active=true, por ejemplo) */
   activeCustomers: number;
+  /** Cantidad de suscripciones activas */
   activeSubscriptions: number;
 };
 
@@ -15,7 +19,7 @@ export default function EcommerceMetrics({
   totalCustomers,
   activeCustomers,
   activeSubscriptions,
-}: Props) {
+}: EcommerceMetricsProps) {
   const activePercent =
     totalCustomers > 0 ? (activeCustomers / totalCustomers) * 100 : 0;
 
@@ -23,19 +27,19 @@ export default function EcommerceMetrics({
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6">
       {/* Clientes */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-gray-100 rounded-xl dark:bg-gray-800">
-          <GroupIcon className="text-gray-800 size-6 dark:text-white/90" />
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 dark:bg-gray-800">
+          <GroupIcon className="size-6 text-gray-800 dark:text-white/90" />
         </div>
 
-        <div className="flex items-end justify-between mt-5">
+        <div className="mt-5 flex items-end justify-between">
           <div>
             <span className="text-sm text-gray-500 dark:text-gray-400">
               Clientes activos
             </span>
-            <h4 className="mt-2 font-bold text-gray-800 text-title-sm dark:text-white/90">
+            <h4 className="mt-2 text-title-sm font-bold text-gray-800 dark:text-white/90">
               {activeCustomers}
             </h4>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               Total clientes: {totalCustomers}
             </p>
           </div>
@@ -48,15 +52,16 @@ export default function EcommerceMetrics({
 
       {/* Suscripciones */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-gray-100 rounded-xl dark:bg-gray-800">
-          <BoxIconLine className="text-gray-800 size-6 dark:text-white/90" />
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 dark:bg-gray-800">
+          <BoxIconLine className="size-6 text-gray-800 dark:text-white/90" />
         </div>
-        <div className="flex items-end justify-between mt-5">
+
+        <div className="mt-5 flex items-end justify-between">
           <div>
             <span className="text-sm text-gray-500 dark:text-gray-400">
               Suscripciones activas
             </span>
-            <h4 className="mt-2 font-bold text-gray-800 text-title-sm dark:text-white/90">
+            <h4 className="mt-2 text-title-sm font-bold text-gray-800 dark:text-white/90">
               {activeSubscriptions}
             </h4>
           </div>

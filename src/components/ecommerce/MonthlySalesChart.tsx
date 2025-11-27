@@ -1,20 +1,23 @@
+// src/components/ecommerce/MonthlySalesChart.tsx
+import { useMemo, useState } from "react";
 import Chart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
+
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { MoreDotIcon } from "../../icons";
-import { useMemo, useState } from "react";
 import type { VisitsByDay } from "../../api/analytics";
 
 type Props = {
-  visitsByDay?: VisitsByDay[];
+  /** Datos de visitas por día para el gráfico */
+  data?: VisitsByDay[];
 };
 
-export default function MonthlySalesChart({ visitsByDay = [] }: Props) {
+export default function MonthlySalesChart({ data = [] }: Props) {
   const [isOpen, setIsOpen] = useState(false);
 
   const { categories, series } = useMemo(() => {
-    if (!visitsByDay.length) {
+    if (!data.length) {
       return {
         categories: ["Sin datos"],
         series: [
@@ -27,15 +30,15 @@ export default function MonthlySalesChart({ visitsByDay = [] }: Props) {
     }
 
     return {
-      categories: visitsByDay.map((v) => v.date),
+      categories: data.map((v) => v.date),
       series: [
         {
           name: "Visitas",
-          data: visitsByDay.map((v) => v.count),
+          data: data.map((v) => v.count),
         },
       ],
     };
-  }, [visitsByDay]);
+  }, [data]);
 
   const options: ApexOptions = {
     colors: ["#465fff"],
@@ -119,7 +122,7 @@ export default function MonthlySalesChart({ visitsByDay = [] }: Props) {
         </h3>
         <div className="relative inline-block">
           <button className="dropdown-toggle" onClick={toggleDropdown}>
-            <MoreDotIcon className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 size-6" />
+            <MoreDotIcon className="size-6 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300" />
           </button>
           <Dropdown
             isOpen={isOpen}
@@ -128,7 +131,7 @@ export default function MonthlySalesChart({ visitsByDay = [] }: Props) {
           >
             <DropdownItem
               onItemClick={closeDropdown}
-              className="flex w-full font-normal text-left text-gray-500 rounded-lg hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+              className="flex w-full rounded-lg text-left font-normal text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
               Actualizar
             </DropdownItem>
@@ -136,8 +139,8 @@ export default function MonthlySalesChart({ visitsByDay = [] }: Props) {
         </div>
       </div>
 
-      <div className="max-w-full overflow-x-auto custom-scrollbar">
-        <div className="-ml-5 min-w-[650px] xl:min-w-full pl-2">
+      <div className="custom-scrollbar max-w-full overflow-x-auto">
+        <div className="-ml-5 min-w-[650px] pl-2 xl:min-w-full">
           <Chart options={options} series={series} type="bar" height={180} />
         </div>
       </div>
