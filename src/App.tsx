@@ -13,7 +13,6 @@ import NotFound from "./pages/OtherPage/NotFound";
 import Calendar from "./pages/Visits/Calendar";
 import VisitsPage from "./pages/Visits/VisitsPage";
 import UserPage from "./pages/Users/UserTable"; 
-import Blank from "./pages/Blank";
 import PlanPage from "./pages/Plans/PlanPage";
 import SubscriptionsPage from "./pages/Subscriptions/SubscriptionsPage";
 import AppLayout from "./layout/AppLayout";
@@ -21,6 +20,7 @@ import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
 import PrivateRoute from "./routes/PrivateRoute";
 import CustomersPage from "./pages/Customers/CustomerPage";
+import ResetPassword from "./pages/AuthPages/ResetPassword";
 
 // helpers de auth (inactividad)
 import {
@@ -79,6 +79,7 @@ export default function App() {
         <Routes>
           {/* Ruta pública */}
           <Route path="/signin" element={<SignIn />} />
+          <Route path="/reset-password" element={<ResetPassword/>} />
 
           {/* Rutas protegidas por login */}
           <Route element={<PrivateRoute />}>
@@ -90,7 +91,6 @@ export default function App() {
               <Route path="/plans" element={<PlanPage />} />
               <Route path="/subscriptions" element={<SubscriptionsPage />} />
               <Route path="/visit" element={<VisitsPage />} />
-              <Route path="/blank" element={<Blank />} />
             </Route>
           </Route>
 

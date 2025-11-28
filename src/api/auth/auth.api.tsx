@@ -27,6 +27,18 @@ export interface RefreshResponse {
   access: string;
 }
 
+/** 🔹 Nuevos tipos para reset de contraseña */
+export interface ForgotPasswordDTO {
+  email: string;
+}
+
+export interface ResetPasswordDTO {
+  uid: string;
+  token: string;
+  new_password: string;
+  confirm_password: string;
+}
+
 /* ======================================
  * Axios instance (solo para auth)
  * ====================================== */
@@ -49,6 +61,26 @@ export const refreshToken = async (data: RefreshDTO) => {
   // POST http://.../api/auth/token/refresh/
   const res = await AuthApi.post<RefreshResponse>(
     "api/auth/token/refresh/",
+    data
+  );
+  return res.data;
+};
+
+/** 🔹 Solicitar correo de restablecimiento de contraseña */
+export const forgotPassword = async (data: ForgotPasswordDTO) => {
+  // POST http://.../api/core/forgot-password/
+  const res = await AuthApi.post<{ detail: string }>(
+    "api/core/forgot-password/",
+    data
+  );
+  return res.data;
+};
+
+/** 🔹 Aplicar el cambio de contraseña con uid + token */
+export const resetPassword = async (data: ResetPasswordDTO) => {
+  // POST http://.../api/core/reset-password/
+  const res = await AuthApi.post<{ detail: string }>(
+    "api/core/reset-password/",
     data
   );
   return res.data;
@@ -145,7 +177,7 @@ export const setupAuthInterceptors = (api: AxiosInstance) => {
   // Request: mete el access token en el header
   api.interceptors.request.use(
     (config) => {
-      // 🔒 Check de inactividad ANTES de mandar la request
+      // Check de inactividad ANTES de mandar la request
       if (hasSessionExpiredByInactivity()) {
         clearAuth();
         window.location.href = "/signin";
