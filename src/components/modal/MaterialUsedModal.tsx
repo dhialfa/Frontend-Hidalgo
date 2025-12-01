@@ -1,5 +1,6 @@
 // src/components/modal/MaterialsUsedModal.tsx
 import React, { useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import { Modal } from "../ui/modal";
 import Pagination from "../ui/Pagination";
 import {
@@ -43,6 +44,45 @@ const emptyForm: FormValues = {
   unit_cost: "",
 };
 
+// 🔹 Helper para convertir errores de Axios/DRF en un array de strings
+function buildErrorMessages(error: unknown, fallback: string): string[] {
+  if (axios.isAxiosError(error) && error.response) {
+    const data = error.response.data as any;
+    const msgs: string[] = [];
+
+    if (!data) {
+      msgs.push(fallback);
+    } else if (typeof data === "string") {
+      msgs.push(data);
+    } else if (typeof data === "object") {
+      if (data.detail) msgs.push(String(data.detail));
+      if (data.message) msgs.push(String(data.message));
+      if (Array.isArray(data.non_field_errors)) {
+        msgs.push(...data.non_field_errors.map((m: any) => String(m)));
+      }
+
+      for (const [key, value] of Object.entries(data)) {
+        if (["detail", "message", "non_field_errors"].includes(key)) continue;
+        if (Array.isArray(value)) {
+          msgs.push(`${key}: ${value.map((v) => String(v)).join(" ")}`);
+        } else if (value) {
+          msgs.push(`${key}: ${String(value)}`);
+        }
+      }
+
+      if (msgs.length === 0) {
+        msgs.push(fallback);
+      }
+    } else {
+      msgs.push(fallback);
+    }
+
+    return msgs;
+  }
+
+  return [fallback];
+}
+
 export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) {
   // -------- Paginación/listado --------
   const [loading, setLoading] = useState(false);
@@ -51,7 +91,9 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const totalPages = Math.max(1, Math.ceil(count / pageSize));
-  const [error, setError] = useState<string | null>(null);
+
+  // 🔹 Errores globales (carga, submit, delete)
+  const [errors, setErrors] = useState<string[]>([]);
 
   // -------- Formulario --------
   const [saving, setSaving] = useState(false);
@@ -64,7 +106,10 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
     [visitId]
   );
   const subtitle = useMemo(
-    () => (isEdit ? "Actualiza los datos del material seleccionado." : "Registra materiales consumidos en esta visita."),
+    () =>
+      isEdit
+        ? "Actualiza los datos del material seleccionado."
+        : "Registra materiales consumidos en esta visita.",
     [isEdit]
   );
 
@@ -74,7 +119,7 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
   const load = async () => {
     if (!visitId || !isOpen) return;
     setLoading(true);
-    setError(null);
+    setErrors([]);
     try {
       const data: PageResp<MaterialUsed> = await getMaterialsUsedByVisitPaged(visitId, {
         page,
@@ -83,9 +128,10 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
       });
       setRows(data.results ?? []);
       setCount(Number(data.count ?? 0));
-    } catch (e: any) {
-      console.error("materials load error:", e?.response?.data || e);
-      setError(e?.response?.data?.detail || "Error al cargar materiales usados.");
+    } catch (e) {
+      console.error("materials load error:", e);
+      setRows([]);
+      setErrors(buildErrorMessages(e, "Error al cargar materiales usados."));
     } finally {
       setLoading(false);
     }
@@ -94,7 +140,7 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
   // Reset y carga al abrir/cambiar visita
   useEffect(() => {
     if (!isOpen) return;
-    setError(null);
+    setErrors([]);
     resetForm();
     setPage(1); // siempre iniciar en página 1 al abrir/cambiar visita
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,7 +159,10 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
     [rows]
   );
 
-  const linePreview = useMemo(() => toNum(form.unit) * toNum(form.unit_cost), [form.unit, form.unit_cost]);
+  const linePreview = useMemo(
+    () => toNum(form.unit) * toNum(form.unit_cost),
+    [form.unit, form.unit_cost]
+  );
 
   // -------- CRUD --------
   const onSubmit = async (ev: React.FormEvent) => {
@@ -128,7 +177,7 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
     };
 
     setSaving(true);
-    setError(null);
+    setErrors([]);
     try {
       if (isEdit && form.id != null) {
         await patchMaterialUsed(form.id, payload as any);
@@ -139,9 +188,9 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
       }
       await load();
       resetForm();
-    } catch (e: any) {
-      console.error("materials submit error:", e?.response?.data || e);
-      setError(e?.response?.data?.detail || "No se pudo guardar el material.");
+    } catch (e) {
+      console.error("materials submit error:", e);
+      setErrors(buildErrorMessages(e, "No se pudo guardar el material."));
     } finally {
       setSaving(false);
     }
@@ -154,12 +203,13 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
       unit: m.unit ?? "",
       unit_cost: m.unit_cost ?? "",
     });
+    setErrors([]);
   };
 
   const onDelete = async (id: number) => {
     if (!confirm("¿Eliminar este material?")) return;
     setSaving(true);
-    setError(null);
+    setErrors([]);
     try {
       await deleteMaterialUsed(id);
       // Si eliminamos el último de la página y no es la primera, retrocede una página
@@ -168,9 +218,9 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
       }
       await load();
       if (form.id === id) resetForm();
-    } catch (e: any) {
-      console.error("materials delete error:", e?.response?.data || e);
-      setError(e?.response?.data?.detail || "No se pudo eliminar.");
+    } catch (e) {
+      console.error("materials delete error:", e);
+      setErrors(buildErrorMessages(e, "No se pudo eliminar."));
     } finally {
       setSaving(false);
     }
@@ -178,6 +228,7 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
 
   const close = () => {
     resetForm();
+    setErrors([]);
     onClose();
   };
 
@@ -194,13 +245,26 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
           <p className="text-sm text-gray-500 dark:text-gray-400">{subtitle}</p>
         </div>
 
+        {/* 🔹 Bloque de errores globales */}
+        {errors.length > 0 && (
+          <div className="mt-4 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-900/20 dark:text-red-200">
+            <ul className="list-disc pl-5 space-y-1">
+              {errors.map((msg, idx) => (
+                <li key={idx}>{msg}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* ---------- Body ---------- */}
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-5">
           {/* Lista (col 1-3) */}
           <div className="lg:col-span-3">
             <div className="rounded-xl border border-gray-200 dark:border-white/10">
               <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5 dark:border-white/10">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Lista de materiales</span>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                  Lista de materiales
+                </span>
                 <button
                   onClick={resetForm}
                   className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
@@ -213,7 +277,10 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
                 {loading ? (
                   <div className="space-y-2 p-4">
                     {Array.from({ length: 5 }).map((_, i) => (
-                      <div key={i} className="h-11 rounded-lg bg-gray-100 dark:bg-white/10 animate-pulse" />
+                      <div
+                        key={i}
+                        className="h-11 rounded-lg bg-gray-100 dark:bg-white/10 animate-pulse"
+                      />
                     ))}
                   </div>
                 ) : rows.length === 0 ? (
@@ -237,11 +304,22 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
                         const unitCost = toNum(m.unit_cost);
                         const total = qty * unitCost;
                         return (
-                          <tr key={m.id} className="hover:bg-gray-50/60 dark:hover:bg-white/5">
-                            <td className="px-4 py-2 font-medium text-gray-800 dark:text-gray-100">{m.description}</td>
-                            <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{qty}</td>
-                            <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{crc(unitCost)}</td>
-                            <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{crc(total)}</td>
+                          <tr
+                            key={m.id}
+                            className="hover:bg-gray-50/60 dark:hover:bg-white/5"
+                          >
+                            <td className="px-4 py-2 font-medium text-gray-800 dark:text-gray-100">
+                              {m.description}
+                            </td>
+                            <td className="px-4 py-2 text-gray-700 dark:text-gray-200">
+                              {qty}
+                            </td>
+                            <td className="px-4 py-2 text-gray-700 dark:text-gray-200">
+                              {crc(unitCost)}
+                            </td>
+                            <td className="px-4 py-2 text-gray-700 dark:text-gray-200">
+                              {crc(total)}
+                            </td>
                             <td className="px-4 py-2">
                               <div className="flex items-center justify-end gap-2">
                                 <button
@@ -265,10 +343,15 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
                     {/* Pie con suma total */}
                     <tfoot className="bg-gray-50/70 dark:bg-white/5">
                       <tr>
-                        <td className="px-4 py-2 text-right font-semibold text-gray-700 dark:text-gray-200" colSpan={3}>
+                        <td
+                          className="px-4 py-2 text-right font-semibold text-gray-700 dark:text-gray-200"
+                          colSpan={3}
+                        >
                           Total materiales
                         </td>
-                        <td className="px-4 py-2 font-semibold text-gray-900 dark:text-gray-100">{crc(grandTotal)}</td>
+                        <td className="px-4 py-2 font-semibold text-gray-900 dark:text-gray-100">
+                          {crc(grandTotal)}
+                        </td>
                         <td />
                       </tr>
                     </tfoot>
@@ -291,18 +374,15 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
                 />
                 <div className="mt-1 text-xs text-gray-500">Total: {count}</div>
               </div>
-
-              {error && (
-                <div className="border-t border-red-100 px-4 py-2 text-sm text-red-600 dark:border-red-900/30 dark:text-red-400">
-                  {error}
-                </div>
-              )}
             </div>
           </div>
 
           {/* Form (col 4-5) */}
           <div className="lg:col-span-2">
-            <form onSubmit={onSubmit} className="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-white/10">
+            <form
+              onSubmit={onSubmit}
+              className="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-white/10"
+            >
               {/* Descripción */}
               <div className="sm:col-span-2">
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
@@ -310,7 +390,9 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
                 </label>
                 <input
                   value={form.description}
-                  onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, description: e.target.value }))
+                  }
                   required
                   className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
                   placeholder="Ej: cable UTP"
@@ -327,7 +409,9 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
                     type="number"
                     step="any"
                     value={form.unit}
-                    onChange={(e) => setForm((s) => ({ ...s, unit: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, unit: e.target.value }))
+                    }
                     required
                     className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
                     placeholder="0"
@@ -341,7 +425,9 @@ export default function MaterialsUsedModal({ isOpen, onClose, visitId }: Props) 
                     type="number"
                     step="any"
                     value={form.unit_cost}
-                    onChange={(e) => setForm((s) => ({ ...s, unit_cost: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, unit_cost: e.target.value }))
+                    }
                     required
                     className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
                     placeholder="0"

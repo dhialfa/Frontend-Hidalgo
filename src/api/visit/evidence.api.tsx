@@ -1,6 +1,6 @@
 // src/api/evidences.ts
 import axios, { AxiosInstance, AxiosRequestConfig } from "axios";
-import { getAccessToken } from "../auth/auth.api"; // 👈 ajusta la ruta si auth.ts está en otro lado
+import { getAccessToken } from "../auth/auth.api";
 
 const API = import.meta.env?.VITE_API_URL ?? "http://localhost:8000";
 
@@ -34,10 +34,10 @@ export type PageResp<T> = {
 };
 
 const EvidenceApi: AxiosInstance = axios.create({
-  baseURL: `${API}/api/evidence/`, // plural + barra final
+  baseURL: `${API}/api/evidence/`, 
 });
 
-// 🔐 Interceptor: mete el JWT en TODOS los requests de este módulo
+// Interceptor: mete el JWT en TODOS los requests de este módulo
 EvidenceApi.interceptors.request.use((config) => {
   const token = getAccessToken();
   if (token) {

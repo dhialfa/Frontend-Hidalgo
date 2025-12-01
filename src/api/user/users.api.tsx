@@ -1,6 +1,6 @@
 // src/api/users.ts
 import axios, { AxiosInstance } from "axios";
-import { getAccessToken } from "../auth/auth.api"; // 👈 ajusta la ruta si hace falta
+import { getAccessToken } from "../auth/auth.api";
 
 /** Usa tu .env: VITE_API_URL=http://localhost:8000 */
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -67,7 +67,7 @@ const UserApi: AxiosInstance = axios.create({
   // timeout: 15000,
 });
 
-// 👉 Interceptor para adjuntar el JWT en cada request
+// Interceptor para adjuntar el JWT en cada request
 UserApi.interceptors.request.use((config) => {
   const token = getAccessToken();
   // console.log("[UserApi] token:", token);
@@ -112,7 +112,7 @@ export const getUsersByUrl = async (url: string) => {
  * CRUD
  * ========================= */
 
-// (No paginado) GET /api/users/  — devuelto como arreglo si desactivas paginación
+// (No paginado) GET /api/users/ 
 export const getAllUsers = () => UserApi.get<User[]>("");
 
 // GET /api/users/:id/

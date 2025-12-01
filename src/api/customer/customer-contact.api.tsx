@@ -75,7 +75,7 @@ export const getCustomerContacts = async (
   const res = await CustomerContactApi.get<PageResp<CustomerContact>>("", {
     params,
   });
-  return res.data; // 👈 aquí devolvemos data
+  return res.data;
 };
 
 export const getCustomerContactsByUrl = async (url: string) => {

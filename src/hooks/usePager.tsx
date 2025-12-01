@@ -6,7 +6,7 @@ export function usePager<T>(
   initialParams: any = {}
 ) {
   const [page, setPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(initialParams.page_size || 25);
+  const [pageSize, setPageSize] = useState<number>(initialParams.page_size || 12);
   const [loading, setLoading] = useState(false);
   const [count, setCount] = useState(0);
   const [rows, setRows] = useState<T[]>([]);

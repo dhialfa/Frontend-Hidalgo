@@ -18,7 +18,6 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   visitId: number | null;
-  /** Tareas del plan de la suscripción (para ligar plan_task) */
   planTasks?: PlanTaskLite[];
 };
 

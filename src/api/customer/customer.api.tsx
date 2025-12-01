@@ -3,7 +3,7 @@ import axios, {
   AxiosInstance,
   AxiosHeaders,
 } from "axios";
-import { getAccessToken } from "../auth/auth.api"; // ajusta ruta si hace falta
+import { getAccessToken } from "../auth/auth.api";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 

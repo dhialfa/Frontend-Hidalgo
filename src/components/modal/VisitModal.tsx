@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import { Modal } from "../../components/ui/modal";
 import {
   getPlanSubscription,
   getAllPlanSubscriptions,
   type PlanSubscription,
 } from "../../api/plan and subscriptions/plan-subscriptions.api";
-import { useAuth } from "../../auth/AuthContext"; 
+import { useAuth } from "../../auth/AuthContext";
 
 //Tipos de backend
 export type VisitStatus = "scheduled" | "in_progress" | "completed" | "canceled";
@@ -77,6 +78,46 @@ function fromIso(iso?: string | null): { date: string; time: string } {
   return { date: `${yyyy}-${mm}-${dd}`, time: `${HH}:${MM}` };
 }
 
+// 🔹 Helper para convertir errores de Axios/DRF en array de strings
+function buildErrorMessages(error: unknown, fallback: string): string[] {
+  if (axios.isAxiosError(error) && error.response) {
+    const data = error.response.data as any;
+    const msgs: string[] = [];
+
+    if (!data) {
+      msgs.push(fallback);
+    } else if (typeof data === "string") {
+      msgs.push(data);
+    } else if (typeof data === "object") {
+      if (data.detail) msgs.push(String(data.detail));
+      if (data.message) msgs.push(String(data.message));
+      if (Array.isArray(data.non_field_errors)) {
+        msgs.push(...data.non_field_errors.map((m: any) => String(m)));
+      }
+
+      // Errores por campo
+      for (const [key, value] of Object.entries(data)) {
+        if (["detail", "message", "non_field_errors"].includes(key)) continue;
+        if (Array.isArray(value)) {
+          msgs.push(`${key}: ${value.map((v) => String(v)).join(" ")}`);
+        } else if (value) {
+          msgs.push(`${key}: ${String(value)}`);
+        }
+      }
+
+      if (msgs.length === 0) {
+        msgs.push(fallback);
+      }
+    } else {
+      msgs.push(fallback);
+    }
+
+    return msgs;
+  }
+
+  return [fallback];
+}
+
 export default function VisitModal({
   isOpen,
   onClose,
@@ -109,7 +150,10 @@ export default function VisitModal({
   const [endTime, setEndTime] = useState<string>(initEnd.time || "");
 
   // --------- errores de formulario / backend ----------
-  const [formError, setFormError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<string[]>([]);
+
+  // --------- estado de guardado ----------
+  const [saving, setSaving] = useState(false);
 
   // --------- buscador de suscripción por nombre -----------
   const [subSearch, setSubSearch] = useState<string>("");
@@ -137,7 +181,8 @@ export default function VisitModal({
     setSubSearch("");
     setSubsResults([]);
     setSubsError(null);
-    setFormError(null); // limpiamos errores cuando se abre/reset
+    setErrors([]); // limpiamos errores cuando se abre/reset
+    setSaving(false);
   }, [initial, isOpen]);
 
   // Buscar y *mostrar solo nombres* (no IDs)
@@ -194,7 +239,7 @@ export default function VisitModal({
   const canSave = useMemo(() => {
     return (
       !!subscriptionId &&
-      !!loggedUserId &&                   
+      !!loggedUserId &&
       !!startDate &&
       !!startTime &&
       (status !== "canceled" ||
@@ -203,85 +248,85 @@ export default function VisitModal({
   }, [subscriptionId, loggedUserId, startDate, startTime, status, cancelReason]);
 
   async function handleSave() {
-    setFormError(null);
+    const localErrors: string[] = [];
 
     if (!loggedUserId) {
-      setFormError("No hay usuario autenticado para asociar a la visita.");
-      return;
+      localErrors.push("No hay usuario autenticado para asociar a la visita.");
     }
 
-    if (!canSave) {
-      setFormError("Completa los campos requeridos antes de guardar.");
+    if (!subscriptionId) {
+      localErrors.push("Debes seleccionar una suscripción.");
+    }
+
+    if (!startDate || !startTime) {
+      localErrors.push("La fecha y hora de inicio son obligatorias.");
+    }
+
+    if (
+      status === "canceled" &&
+      !cancelReason.trim()
+    ) {
+      localErrors.push("Debes indicar un motivo de cancelación.");
+    }
+
+    if (localErrors.length > 0) {
+      setErrors(localErrors);
       return;
     }
 
     // Construimos las fechas/hora en ISO
     const startISO = toIsoZ(startDate, startTime);
-    const endISO =
-      endDate && endTime ? toIsoZ(endDate, endTime) : null;
+    const endISO = endDate && endTime ? toIsoZ(endDate, endTime) : null;
 
     // Validación en front: inicio NO puede ser después del fin
     if (endISO) {
       const startDateObj = new Date(startISO);
       const endDateObj = new Date(endISO);
       if (endDateObj < startDateObj) {
-        setFormError("La fecha/hora de inicio no puede ser posterior a la fecha/hora de fin.");
+        setErrors([
+          "La fecha/hora de fin no puede ser anterior a la fecha/hora de inicio.",
+        ]);
         return;
       }
     }
 
     const payload: VisitBackendDTO = {
       subscription: Number(subscriptionId),
-      user: loggedUserId,          // 👈 SIEMPRE el usuario logueado
+      user: loggedUserId!,          // ya validado arriba
       start: startISO,
       end: endISO,
       status,
       site_address: siteAddress || "",
       notes: notes || "",
-      cancel_reason:
-        status === "canceled" ? (cancelReason || "") : "",
+      cancel_reason: status === "canceled" ? (cancelReason || "") : "",
     };
 
     try {
+      setSaving(true);
+      setErrors([]);
       await onSave(payload, { id: initial.id ?? null });
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      // Intentamos extraer mensajes del backend (DRF)
-      const resp = err?.response?.data;
-
-      if (!resp) {
-        setFormError("Ocurrió un error al guardar la visita.");
-        return;
-      }
-
-      if (typeof resp === "string") {
-        setFormError(resp);
-        return;
-      }
-
-      if (resp.detail) {
-        setFormError(String(resp.detail));
-        return;
-      }
-
-      // Posible estructura: { field: ["msg1", "msg2"], ... }
-      const messages: string[] = [];
-      Object.entries(resp).forEach(([field, value]) => {
-        if (Array.isArray(value)) {
-          messages.push(`${field}: ${value.join(" ")}`);
-        } else if (typeof value === "string") {
-          messages.push(`${field}: ${value}`);
-        }
-      });
-
-      setFormError(
-        messages.join(" | ") || "No se pudo guardar la visita."
+      setErrors(
+        buildErrorMessages(
+          err,
+          "Ocurrió un error al guardar la visita.",
+        ),
       );
+    } finally {
+      setSaving(false);
     }
   }
 
+  const handleClose = () => {
+    setErrors([]);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-[820px] p-6 lg:p-10">
+    <Modal isOpen={isOpen} onClose={handleClose} className="max-w-[820px] p-6 lg:p-10">
       <div className="flex flex-col px-2 overflow-y-auto custom-scrollbar">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -304,9 +349,13 @@ export default function VisitModal({
         </div>
 
         {/* Bloque de errores de formulario / backend */}
-        {formError && (
+        {errors.length > 0 && (
           <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
-            {formError}
+            <ul className="list-disc pl-4 space-y-1">
+              {errors.map((msg, idx) => (
+                <li key={idx}>{msg}</li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -522,19 +571,19 @@ export default function VisitModal({
 
             <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 type="button"
                 className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
               >
                 Cerrar
               </button>
               <button
-                onClick={handleSave}
+                onClick={() => void handleSave()}
                 type="button"
-                disabled={!canSave}
+                disabled={!canSave || saving}
                 className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
               >
-                {isEdit ? "Actualizar" : "Crear visita"}
+                {saving ? "Guardando..." : isEdit ? "Actualizar" : "Crear visita"}
               </button>
             </div>
           </div>

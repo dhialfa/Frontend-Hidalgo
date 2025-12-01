@@ -1,5 +1,6 @@
 // src/components/modal/EvidencesModal.tsx
 import React, { useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import { Modal } from "../ui/modal";
 import {
   getEvidencesByVisitAll, // ← sin paginación para el carrusel
@@ -34,11 +35,55 @@ const emptyForm: FormValues = {
   files: [],
 };
 
+// 🔹 Helper para convertir errores de Axios/DRF en un array de strings
+function buildErrorMessages(error: unknown, fallback: string): string[] {
+  if (axios.isAxiosError(error) && error.response) {
+    const data = error.response.data as any;
+    const msgs: string[] = [];
+
+    if (!data) {
+      msgs.push(fallback);
+    } else if (typeof data === "string") {
+      // Backend devolvió texto plano
+      msgs.push(data);
+    } else if (typeof data === "object") {
+      // detail / message
+      if (data.detail) msgs.push(String(data.detail));
+      if (data.message) msgs.push(String(data.message));
+      if (Array.isArray(data.non_field_errors)) {
+        msgs.push(...data.non_field_errors.map((m: any) => String(m)));
+      }
+
+      // Errores por campo
+      for (const [key, value] of Object.entries(data)) {
+        if (["detail", "message", "non_field_errors"].includes(key)) continue;
+        if (Array.isArray(value)) {
+          msgs.push(`${key}: ${value.map((v) => String(v)).join(" ")}`);
+        } else if (value) {
+          msgs.push(`${key}: ${String(value)}`);
+        }
+      }
+
+      if (msgs.length === 0) {
+        msgs.push(fallback);
+      }
+    } else {
+      msgs.push(fallback);
+    }
+
+    return msgs;
+  }
+
+  return [fallback];
+}
+
 export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
   // listado
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<Evidence[]>([]);
-  const [err, setErr] = useState<string | null>(null);
+
+  // 🔹 Errores (carga, submit, delete, etc.)
+  const [errors, setErrors] = useState<string[]>([]);
 
   // carrusel (NO paginado)
   const items = useMemo(() => toCarouselItems(list), [list]);
@@ -60,14 +105,15 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
   const load = async () => {
     if (!visitId || !isOpen) return;
     setLoading(true);
-    setErr(null);
+    setErrors([]);
     try {
       const data = await getEvidencesByVisitAll(visitId);
       setList(Array.isArray(data) ? data : []);
       setActiveIdx(0);
-    } catch (e: any) {
-      setErr(e?.response?.data?.detail || "Error al cargar evidencias.");
-      console.error("getEvidencesByVisitAll:", e?.response?.data || e);
+    } catch (e) {
+      console.error("getEvidencesByVisitAll:", e);
+      setList([]);
+      setErrors(buildErrorMessages(e, "Error al cargar evidencias."));
     } finally {
       setLoading(false);
     }
@@ -77,7 +123,7 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
     if (!isOpen) return;
     setFormOpen(false);
     setForm(emptyForm);
-    setErr(null);
+    setErrors([]);
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, visitId]);
@@ -86,6 +132,7 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
   const openCreate = () => {
     setForm(emptyForm);
     setFormOpen(true);
+    setErrors([]);
   };
 
   const openEdit = (evd: Evidence) => {
@@ -95,24 +142,27 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
       files: [],
     });
     setFormOpen(true);
+    setErrors([]);
   };
 
   const cancelForm = () => {
     setFormOpen(false);
     setForm(emptyForm);
+    setErrors([]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!visitId) return;
 
+    setErrors([]);
+
     if (!isEdit && form.files.length === 0) {
-      setErr("Debes seleccionar al menos una imagen para subir.");
+      setErrors(["Debes seleccionar al menos una imagen para subir."]);
       return;
     }
 
     setSaving(true);
-    setErr(null);
     try {
       if (isEdit && form.id != null) {
         const file = form.files[0];
@@ -130,9 +180,9 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
       }
       await load();
       cancelForm();
-    } catch (e: any) {
-      console.error("evidence submit error:", e?.response?.status, e?.response?.data);
-      setErr(e?.response?.data?.detail || "No se pudo guardar la evidencia.");
+    } catch (e) {
+      console.error("evidence submit error:", e);
+      setErrors(buildErrorMessages(e, "No se pudo guardar la evidencia."));
     } finally {
       setSaving(false);
     }
@@ -141,14 +191,14 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
   const handleDelete = async (id: number) => {
     if (!confirm("¿Eliminar esta evidencia?")) return;
     setSaving(true);
-    setErr(null);
+    setErrors([]);
     try {
       await deleteEvidence(id);
       await load();
       if (form.id === id) cancelForm();
-    } catch (e: any) {
-      console.error("evidence delete error:", e?.response?.status, e?.response?.data);
-      setErr(e?.response?.data?.detail || "No se pudo eliminar.");
+    } catch (e) {
+      console.error("evidence delete error:", e);
+      setErrors(buildErrorMessages(e, "No se pudo eliminar la evidencia."));
     } finally {
       setSaving(false);
     }
@@ -183,6 +233,17 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
             </p>
           )}
         </div>
+
+        {/* 🔹 Bloque de errores (carga / submit / delete) */}
+        {errors.length > 0 && (
+          <div className="mt-4 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-900/20 dark:text-red-200">
+            <ul className="list-disc pl-5 space-y-1">
+              {errors.map((msg, idx) => (
+                <li key={idx}>{msg}</li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* ---------- Toolbar (solo lista) ---------- */}
         {!formOpen && (
@@ -289,7 +350,7 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
                 {loading ? (
                   <div className="space-y-2 p-4">
                     {Array.from({ length: 5 }).map((_, i) => (
-                      <div key={i} className="h-11 rounded-lg bg-gray-100 dark:bg-white/10 animate-pulse" />
+                      <div key={i} className="h-11 rounded-lg bg-gray-100 dark:bg:white/10 animate-pulse" />
                     ))}
                   </div>
                 ) : list.length === 0 ? (
@@ -310,7 +371,7 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
                               />
                             </div>
                             <div className="min-w-0">
-                              <div className="text-sm font-medium text-gray-900 dark:text-white/90">
+                              <div className="text-sm font-medium text-gray-900 dark:text:white/90">
                                 {e.description || "Sin descripción"}
                               </div>
                               <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
@@ -339,16 +400,13 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
                   </ul>
                 )}
               </div>
-
-              {err && (
-                <div className="border-t border-red-100 px-4 py-2 text-sm text-red-600 dark:border-red-900/30 dark:text-red-400">
-                  {err}
-                </div>
-              )}
             </div>
 
             {/* Formulario crear/editar */}
-            <form onSubmit={handleSubmit} className="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-white/10">
+            <form
+              onSubmit={handleSubmit}
+              className="space-y-3 rounded-xl border border-gray-200 p-4 dark:border:white/10"
+            >
               {/* Descripción */}
               <div className="sm:col-span-2">
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
@@ -387,9 +445,12 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
                     </div>
                     <div className="mt-1 grid grid-cols-3 gap-2 md:grid-cols-4">
                       {form.files.map((f, i) => (
-                        <div key={i} className="group relative h-28 w-full overflow-hidden rounded border border-gray-200 dark:border-white/10">
+                        <div
+                          key={i}
+                          className="group relative h-28 w-full overflow-hidden rounded border border-gray-200 dark:border:white/10"
+                        >
                           <img src={URL.createObjectURL(f)} alt={f.name} className="h-full w-full object-cover" />
-                          <div className="absolute inset-0 hidden items-end justify-end gap-1 p-1 group-hover:flex">
+                          <div className="absolute inset-0 hidden items	end justify-end gap-1 p-1 group-hover:flex">
                             <button
                               type="button"
                               title="Quitar"
@@ -435,7 +496,7 @@ export default function EvidencesModal({ isOpen, onClose, visitId }: Props) {
           <button
             onClick={onClose}
             type="button"
-            className="flex w-full justify-center rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] sm:w-auto"
+            className="flex w-full justify-center rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg:white/[0.03] sm:w-auto"
           >
             Cerrar
           </button>

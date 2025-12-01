@@ -27,7 +27,6 @@ export interface RefreshResponse {
   access: string;
 }
 
-/** 🔹 Nuevos tipos para reset de contraseña */
 export interface ForgotPasswordDTO {
   email: string;
 }
@@ -52,13 +51,11 @@ const AuthApi: AxiosInstance = axios.create({
  * ====================================== */
 
 export const login = async (data: LoginDTO) => {
-  // POST http://.../api/auth/token/
   const res = await AuthApi.post<AuthResponse>("api/auth/token/", data);
   return res.data;
 };
 
 export const refreshToken = async (data: RefreshDTO) => {
-  // POST http://.../api/auth/token/refresh/
   const res = await AuthApi.post<RefreshResponse>(
     "api/auth/token/refresh/",
     data
@@ -66,9 +63,7 @@ export const refreshToken = async (data: RefreshDTO) => {
   return res.data;
 };
 
-/** 🔹 Solicitar correo de restablecimiento de contraseña */
 export const forgotPassword = async (data: ForgotPasswordDTO) => {
-  // POST http://.../api/core/forgot-password/
   const res = await AuthApi.post<{ detail: string }>(
     "api/core/forgot-password/",
     data
@@ -76,9 +71,7 @@ export const forgotPassword = async (data: ForgotPasswordDTO) => {
   return res.data;
 };
 
-/** 🔹 Aplicar el cambio de contraseña con uid + token */
 export const resetPassword = async (data: ResetPasswordDTO) => {
-  // POST http://.../api/core/reset-password/
   const res = await AuthApi.post<{ detail: string }>(
     "api/core/reset-password/",
     data
@@ -86,9 +79,7 @@ export const resetPassword = async (data: ResetPasswordDTO) => {
   return res.data;
 };
 
-/* ======================================
- * Manejo de tokens y usuario en localStorage
- * ====================================== */
+ /* Manejo de tokens y usuario en localStorage*/
 
 export const INACTIVITY_LIMIT_MS = 30 * 60 * 1000; // 30 minutos
 

@@ -31,6 +31,7 @@ import VisitModal, {
 import MaterialsUsedModal from "../modal/MaterialUsedModal";
 import EvidencesModal from "../modal/EvidencesModal";
 import TasksCompletedModal from "../modal/TaskCompletedModal";
+import { toast } from "sonner"; // 👈 Toast
 
 type Mode = "all" | "byCustomer";
 
@@ -235,6 +236,12 @@ export default function VisitsTable({
     setActingId(id);
     try {
       await completeVisit(id); // POST /id/complete/ -> dispara correo
+
+      // 👇 Toast de confirmación (5 segundos)
+      toast.success("La visita ha sido enviada al cliente", {
+        duration: 5000,
+      });
+
       await load();
     } finally {
       setActingId(null);
@@ -304,10 +311,8 @@ export default function VisitsTable({
     opts?: { id?: number | null },
   ) => {
     // --- Validación: la fecha/hora de fin no puede ser anterior a la de inicio ---
-    const rawStart =
-      (dto as any).start ?? (dto as any).startISO ?? null;
-    const rawEnd =
-      (dto as any).end ?? (dto as any).endISO ?? null;
+    const rawStart = (dto as any).start ?? (dto as any).startISO ?? null;
+    const rawEnd = (dto as any).end ?? (dto as any).endISO ?? null;
 
     if (rawStart && rawEnd) {
       const startDate = new Date(rawStart);

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import axios from "axios";
 import { Modal } from "../ui/modal";
 
 export type CustomerFormValues = {
@@ -20,6 +21,45 @@ type Props = {
   submitLabel?: string;
 };
 
+// 🔹 Helper para convertir errores de Axios/DRF en array de strings
+function buildErrorMessages(error: unknown, fallback: string): string[] {
+  if (axios.isAxiosError(error) && error.response) {
+    const data = error.response.data as any;
+    const msgs: string[] = [];
+
+    if (!data) {
+      msgs.push(fallback);
+    } else if (typeof data === "string") {
+      msgs.push(data);
+    } else if (typeof data === "object") {
+      if (data.detail) msgs.push(String(data.detail));
+      if (data.message) msgs.push(String(data.message));
+      if (Array.isArray(data.non_field_errors)) {
+        msgs.push(...data.non_field_errors.map((m: any) => String(m)));
+      }
+
+      for (const [key, value] of Object.entries(data)) {
+        if (["detail", "message", "non_field_errors"].includes(key)) continue;
+        if (Array.isArray(value)) {
+          msgs.push(`${key}: ${value.map((v) => String(v)).join(" ")}`);
+        } else if (value) {
+          msgs.push(`${key}: ${String(value)}`);
+        }
+      }
+
+      if (msgs.length === 0) {
+        msgs.push(fallback);
+      }
+    } else {
+      msgs.push(fallback);
+    }
+
+    return msgs;
+  }
+
+  return [fallback];
+}
+
 export default function CustomerModal({
   isOpen,
   onClose,
@@ -38,6 +78,9 @@ export default function CustomerModal({
   const [location, setLocation] = useState("");
   const [active, setActive] = useState(true);
 
+  // 🔹 Errores (frontend + backend)
+  const [errors, setErrors] = useState<string[]>([]);
+
   // Carga/Resetea el formulario cuando se abre o cambia "initial"
   useEffect(() => {
     if (isOpen) {
@@ -48,18 +91,31 @@ export default function CustomerModal({
       setDirection(initial?.direction ?? "");
       setLocation(initial?.location ?? "");
       setActive(initial?.active ?? true);
+      setErrors([]);
     }
   }, [isOpen, initial]);
 
   const handleClose = () => {
+    setErrors([]);
     onClose();
   };
 
   const handleSubmit = async () => {
-    if (!name.trim()) return alert("El nombre es obligatorio");
-    if (!identification.trim()) return alert("La identificación es obligatoria");
+    // Limpiamos errores previos
+    const localErrors: string[] = [];
+
+    if (!name.trim()) localErrors.push("El nombre es obligatorio.");
+    if (!identification.trim())
+      localErrors.push("La identificación es obligatoria.");
+
+    if (localErrors.length > 0) {
+      setErrors(localErrors);
+      return;
+    }
+
     try {
       setSaving(true);
+      setErrors([]);
       await onSubmit({
         name: name.trim(),
         identification: identification.trim(),
@@ -70,12 +126,11 @@ export default function CustomerModal({
         active,
       });
       handleClose();
-    } catch (err: any) {
-      const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Operación no completada";
-      alert(msg);
+    } catch (err) {
+      console.error("customer submit error:", err);
+      setErrors(
+        buildErrorMessages(err, "Operación no completada al guardar el cliente.")
+      );
     } finally {
       setSaving(false);
     }
@@ -83,21 +138,38 @@ export default function CustomerModal({
 
   if (!isOpen) return null;
 
+  const isEdit = title.toLowerCase().includes("editar");
+
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} className="max-w-[700px] p-6 lg:p-10">
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      className="max-w-[700px] p-6 lg:p-10"
+    >
       <div className="flex flex-col px-2 overflow-y-auto custom-scrollbar">
         <div>
           <h5 className="mb-2 font-semibold text-gray-800 modal-title text-theme-xl dark:text-white/90 lg:text-2xl">
             {title}
           </h5>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            {title.includes("Editar")
+            {isEdit
               ? "Actualiza la información del cliente."
               : "Registra un nuevo cliente para tu sistema."}
           </p>
         </div>
 
-        <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2">
+        {/* 🔹 Bloque de errores */}
+        {errors.length > 0 && (
+          <div className="mt-4 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-900/20 dark:text-red-200">
+            <ul className="list-disc pl-5 space-y-1">
+              {errors.map((msg, idx) => (
+                <li key={idx}>{msg}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="mt-4 grid grid-cols-1 gap-6 sm:mt-8 sm:grid-cols-2">
           {/* Nombre */}
           <div className="sm:col-span-2">
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
@@ -181,6 +253,21 @@ export default function CustomerModal({
               placeholder="San Carlos"
             />
           </div>
+
+          {/* Activo (opcional si lo quieres mostrar) */}
+          {/* 
+          <div className="flex items-center gap-2 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={active}
+              onChange={(e) => setActive(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-700"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-400">
+              Cliente activo
+            </span>
+          </div>
+          */}
         </div>
 
         <div className="flex items-center gap-3 mt-6 sm:justify-end">
@@ -204,4 +291,3 @@ export default function CustomerModal({
     </Modal>
   );
 }
-

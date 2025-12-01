@@ -7,6 +7,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router";
+import { Toaster } from "sonner";
 
 import SignIn from "./pages/AuthPages/SignIn";
 import NotFound from "./pages/OtherPage/NotFound";
@@ -76,10 +77,16 @@ export default function App() {
         <ScrollToTop />
         <AuthActivityWatcher />
 
+        <Toaster
+          position="bottom-right"
+          richColors
+          closeButton
+        />
+
         <Routes>
           {/* Ruta pública */}
           <Route path="/signin" element={<SignIn />} />
-          <Route path="/reset-password" element={<ResetPassword/>} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* Rutas protegidas por login */}
           <Route element={<PrivateRoute />}>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Modal } from "../ui/modal/index"; 
+import axios from "axios"; // 👈 para detectar AxiosError
+import { Modal } from "../ui/modal/index";
 import { useAuth } from "../../auth/AuthContext"; // 👈 importa el contexto
 
 export type UserFormValues = {
@@ -9,8 +10,8 @@ export type UserFormValues = {
   first_name?: string;
   last_name?: string;
   phone?: string;
-  is_active: boolean;   // se maneja interno, no en UI
-  is_staff: boolean;    // admin
+  is_active: boolean; // se maneja interno, no en UI
+  is_staff: boolean; // admin
 };
 
 type Props = {
@@ -56,6 +57,9 @@ export default function UserModal({
   const { role } = useAuth();
   const isCurrentAdmin = role === "admin";
 
+  // 👇 Errores devueltos por el backend (y opcionalmente del cliente)
+  const [errors, setErrors] = useState<string[]>([]);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -81,6 +85,9 @@ export default function UserModal({
       setChangePassword(true);
       setPassword("");
     }
+
+    // Limpiar errores al abrir
+    setErrors([]);
   }, [isOpen, initial, isEdit]);
 
   const handleClose = () => {
@@ -88,14 +95,24 @@ export default function UserModal({
   };
 
   const handleSubmit = async () => {
-    if (!username.trim()) return alert("El username es obligatorio");
-    if (!email.trim()) return alert("El email es obligatorio");
+    // Limpia errores anteriores
+    setErrors([]);
+
+    // Validaciones de frontend rápidas
+    const localErrors: string[] = [];
+    if (!username.trim()) localErrors.push("El username es obligatorio.");
+    if (!email.trim()) localErrors.push("El email es obligatorio.");
     if (!isEdit && !password.trim())
-      return alert("La contraseña es obligatoria");
+      localErrors.push("La contraseña es obligatoria.");
     if (isEdit && changePassword && !password.trim()) {
-      return alert(
+      localErrors.push(
         "Escribe la nueva contraseña o desmarca 'Cambiar contraseña'."
       );
+    }
+
+    if (localErrors.length > 0) {
+      setErrors(localErrors);
+      return;
     }
 
     // 👇 Si el usuario logueado NO es admin, no puede cambiar is_staff
@@ -108,7 +125,7 @@ export default function UserModal({
       first_name: firstName.trim() || undefined,
       last_name: lastName.trim() || undefined,
       phone: phone.trim() || undefined,
-      is_active: isActive,   // se envía, pero no se edita en UI
+      is_active: isActive, // se envía, pero no se edita en UI
       is_staff: finalIsStaff,
       ...(changePassword && password.trim()
         ? { password: password.trim() }
@@ -120,11 +137,53 @@ export default function UserModal({
       await onSubmit(payload, isEdit ? initial!.id : undefined);
       handleClose();
     } catch (err: any) {
-      const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "Operación no completada";
-      alert(msg);
+      console.error("Error al guardar usuario:", err);
+
+      // 👇 Parseamos bien los errores del backend (DRF / Django)
+      if (axios.isAxiosError(err) && err.response) {
+        const data = err.response.data as any;
+        const msgs: string[] = [];
+
+        if (!data) {
+          msgs.push("Operación no completada.");
+        } else if (typeof data === "string") {
+          // El backend devolvió solo un string
+          msgs.push(data);
+        } else if (typeof data === "object") {
+          // 1) Mensaje general
+          if (data.detail) {
+            msgs.push(String(data.detail));
+          }
+          if (data.message) {
+            msgs.push(String(data.message));
+          }
+          if (Array.isArray(data.non_field_errors)) {
+            msgs.push(...data.non_field_errors.map((m: any) => String(m)));
+          }
+
+          // 2) Errores por campo: { username: ["Ya existe"], email: ["..."], ... }
+          for (const [key, value] of Object.entries(data)) {
+            if (["detail", "message", "non_field_errors"].includes(key)) {
+              continue;
+            }
+            if (Array.isArray(value)) {
+              msgs.push(`${key}: ${value.map((v) => String(v)).join(" ")}`);
+            } else if (value) {
+              msgs.push(`${key}: ${String(value)}`);
+            }
+          }
+
+          if (msgs.length === 0) {
+            msgs.push("Operación no completada.");
+          }
+        } else {
+          msgs.push("Operación no completada.");
+        }
+
+        setErrors(msgs);
+      } else {
+        setErrors(["Operación no completada."]);
+      }
     } finally {
       setSaving(false);
     }
@@ -150,7 +209,18 @@ export default function UserModal({
           </p>
         </div>
 
-        <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2">
+        {/* 🔹 Bloque de errores del backend / frontend */}
+        {errors.length > 0 && (
+          <div className="mt-4 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-900/20 dark:text-red-200">
+            <ul className="list-disc pl-5 space-y-1">
+              {errors.map((msg, idx) => (
+                <li key={idx}>{msg}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="mt-4 grid grid-cols-1 gap-6 sm:mt-6 sm:grid-cols-2">
           {/* Username */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
