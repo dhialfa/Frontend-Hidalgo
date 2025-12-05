@@ -85,6 +85,13 @@ export const getVisits = (params?: VisitListParams) =>
   VisitApi.get<VisitList | Visit[]>("", { params });
 
 /**
+ * Lista SOLO las visitas del usuario autenticado.
+ * GET /api/visit/my-visits/
+ */
+export const getMyVisits = (params?: VisitListParams) =>
+  VisitApi.get<VisitList | Visit[]>("my-visits/", { params });
+
+/**
  * Visitas por cliente (si tu backend tiene este endpoint).
  */
 export const getVisitsByCustomer = (
@@ -96,7 +103,7 @@ export const getVisitsByCustomer = (
     { params },
   );
 
-// Helpers rápidos por estado
+// Helpers rápidos por estado (globales)
 export const getScheduledVisits = () =>
   VisitApi.get<VisitList | Visit[]>("", {
     params: { status: "scheduled" },
@@ -134,8 +141,6 @@ export const createVisit = (payload: Partial<Visit>) =>
 
 /**
  * Update completo (PUT).
- * OJO: aquí deberías mandar prácticamente TODO el objeto visita,
- * porque DRF lo trata como "replace".
  */
 export const updateVisit = (
   id: number | string,
@@ -144,8 +149,6 @@ export const updateVisit = (
 
 /**
  * Update parcial (PATCH).
- * Úsalo para cambios pequeños: notas, dirección, etc.
- * Para completar una visita y disparar correo es MEJOR usar `completeVisit`.
  */
 export const patchVisit = (
   id: number | string,
@@ -166,6 +169,9 @@ export const getVisitsBySubscription = (
     { params },
   );
 
+/**
+ * Crear visita ligada a una suscripción específica.
+ */
 export const createVisitBySubscription = (
   subscriptionId: number | string,
   payload: Partial<Visit>,
@@ -175,27 +181,29 @@ export const createVisitBySubscription = (
     payload,
   );
 
+/**
+ * Visitas filtradas por usuario (pensado para admin/supervisor).
+ * Usa el filtro estándar ?user=ID del ViewSet.
+ * GET /api/visit/?user=ID
+ */
 export const getVisitsByUser = (
   userId: number | string,
   params?: VisitListParams,
 ) =>
-  VisitApi.get<VisitList | Visit[]>(
-    `by-user/${userId}/`,
-    { params },
-  );
+  VisitApi.get<VisitList | Visit[]>("", {
+    params: { ...(params || {}), user: userId },
+  });
 
 // ======================== ACCIONES ========================
 
 /**
- * Marca la visita como "in_progress" desde el backend
- * (suponiendo que tu ViewSet tenga la acción `start_now`).
+ * Marca la visita como "in_progress" desde el backend.
  */
 export const startVisitNow = (id: number | string) =>
   VisitApi.post<{ detail: string }>(`${id}/start_now/`);
 
 /**
- * Marca la visita como COMPLETED usando la acción `complete` del backend.
- * ⚡ Esta es la que dispara el correo con `send_visit_completed_email_async`.
+ * Marca la visita como COMPLETED usando la acción `complete`.
  */
 export const completeVisit = (id: number | string) =>
   VisitApi.post<{ detail: string }>(`${id}/complete/`);
@@ -212,7 +220,7 @@ export const cancelVisit = (
   });
 
 /**
- * Restaura una visita cancelada/eliminada (si el backend lo soporta).
+ * Restaura una visita cancelada/eliminada.
  */
 export const restoreVisit = (id: number | string) =>
   VisitApi.post<{ detail: string }>(`${id}/restore/`);

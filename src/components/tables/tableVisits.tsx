@@ -10,6 +10,7 @@ import {
 import Pagination from "../ui/Pagination";
 import {
   getVisits,
+  getMyVisits,              // 👈 nuevo
   getVisitsByCustomer,
   startVisitNow,
   completeVisit,
@@ -31,8 +32,8 @@ import VisitModal, {
 import MaterialsUsedModal from "../modal/MaterialUsedModal";
 import EvidencesModal from "../modal/EvidencesModal";
 import TasksCompletedModal from "../modal/TaskCompletedModal";
-import { toast } from "sonner"; // 👈 Toast
-
+import { toast } from "sonner"; 
+import { useAuth } from "../../auth/AuthContext"; 
 type Mode = "all" | "byCustomer";
 
 type Props = {
@@ -60,12 +61,12 @@ function fmtDate(date?: string | null) {
 
   const d = new Date(date);
 
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString("es-CR", {
     dateStyle: "short",
     timeStyle: "short",
+    timeZone: "UTC",  
   });
 }
-
 function uniqNumbers(arr: Array<number | null | undefined>): number[] {
   return Array.from(
     new Set(arr.filter((x): x is number => typeof x === "number")),
@@ -97,6 +98,10 @@ export default function VisitsTable({
   defaultStatus = "all",
   showIds = false,
 }: Props) {
+  const { user } = useAuth();                     // 👈 usuario logueado
+  const isStaff = !!user?.is_staff;              // 👈 viene de Django
+  const isAuthenticated = !!user;
+
   const [rows, setRows] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -151,8 +156,13 @@ export default function VisitsTable({
 
   const headerTitle = useMemo(
     () =>
-      title ?? (mode === "byCustomer" ? "Visitas por cliente" : "Visitas"),
-    [mode, title],
+      title ??
+      (mode === "byCustomer"
+        ? "Visitas por cliente"
+        : isStaff
+        ? "Visitas"
+        : "Mis visitas"),
+    [mode, title, isStaff],
   );
 
   // Loader con paginación DRF
@@ -168,10 +178,15 @@ export default function VisitsTable({
       if (search.trim()) params.search = search.trim();
       if (status !== "all") params.status = status;
 
+      // 👇 Lógica de qué endpoint usar
       const res =
         mode === "byCustomer"
           ? await getVisitsByCustomer(customerId!, params)
-          : await getVisits(params);
+          : // Si el usuario está logueado y NO es staff → solo sus visitas
+            isAuthenticated && !isStaff
+          ? await getMyVisits(params)
+          : // Admin/staff (o sin user en context) → todas las visitas
+            await getVisits(params);
 
       const data: any = res.data;
       const results: Visit[] = Array.isArray(data)
@@ -214,7 +229,7 @@ export default function VisitsTable({
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, customerId, page, pageSizeState, search, status, ordering]);
+  }, [mode, customerId, page, pageSizeState, search, status, ordering, isStaff, isAuthenticated]);
 
   const pageCount = useMemo(
     () => Math.max(1, Math.ceil((count || 0) / pageSizeState)),

@@ -79,16 +79,14 @@ export const resetPassword = async (data: ResetPasswordDTO) => {
   return res.data;
 };
 
- /* Manejo de tokens y usuario en localStorage*/
+/* Manejo de tokens y usuario en localStorage */
 
 export const INACTIVITY_LIMIT_MS = 30 * 60 * 1000; // 30 minutos
 
-/** Actualiza el timestamp de última actividad del usuario */
 export const touchActivity = () => {
   localStorage.setItem("lastActivity", Date.now().toString());
 };
 
-/** Obtiene el timestamp (ms) de la última actividad */
 export const getLastActivity = (): number | null => {
   const value = localStorage.getItem("lastActivity");
   if (!value) return null;
@@ -96,23 +94,20 @@ export const getLastActivity = (): number | null => {
   return Number.isNaN(n) ? null : n;
 };
 
-/** Indica si la sesión está vencida por inactividad */
 export const hasSessionExpiredByInactivity = (): boolean => {
   const last = getLastActivity();
-  if (!last) return false; // si no hay registro, no forzamos expiración aquí
+  if (!last) return false;
   const diff = Date.now() - last;
   return diff > INACTIVITY_LIMIT_MS;
 };
 
-/** Guarda tokens + usuario y registra primera actividad */
 export const storeAuth = (auth: AuthResponse) => {
   localStorage.setItem("access", auth.access);
   localStorage.setItem("refresh", auth.refresh);
   localStorage.setItem("user", JSON.stringify(auth.user));
-  touchActivity(); // ✅ primer registro de actividad al iniciar sesión
+  touchActivity();
 };
 
-/** Limpia toda la info de autenticación */
 export const clearAuth = () => {
   localStorage.removeItem("access");
   localStorage.removeItem("refresh");
@@ -143,7 +138,11 @@ export const getCurrentUser = (): User | null => {
  */
 export const isAuthenticated = (): boolean => {
   const token = getAccessToken();
-  if (!token) return false;
+  if (!token) {
+    // por limpieza, si no hay token, nos aseguramos de vaciar todo
+    clearAuth();
+    return false;
+  }
 
   if (hasSessionExpiredByInactivity()) {
     clearAuth();
@@ -157,18 +156,11 @@ export const isAuthenticated = (): boolean => {
  * Interceptores para refrescar token
  * ====================================== */
 
-/**
- * Setup genérico para cualquier AxiosInstance de tu app (customers, users, visits, etc.)
- * - Añade el access token en Authorization.
- * - Si el backend devuelve 401 (token_not_valid / expirado), intenta refrescar usando el refresh.
- * - Reintenta automáticamente la request ORIGINAL una sola vez.
- * - Si la sesión vence por inactividad, limpia todo y redirige a /signin.
- */
 export const setupAuthInterceptors = (api: AxiosInstance) => {
   // Request: mete el access token en el header
   api.interceptors.request.use(
     (config) => {
-      // Check de inactividad ANTES de mandar la request
+      // 1) Check de inactividad
       if (hasSessionExpiredByInactivity()) {
         clearAuth();
         window.location.href = "/signin";
@@ -177,12 +169,19 @@ export const setupAuthInterceptors = (api: AxiosInstance) => {
         );
       }
 
+      // 2) Si NO hay token -> cerrar sesión y redirigir
       const token = getAccessToken();
-      if (token) {
-        const cfg: any = config;
-        cfg.headers = cfg.headers || {};
-        cfg.headers.Authorization = `Bearer ${token}`;
+      if (!token) {
+        clearAuth();
+        window.location.href = "/signin";
+        return Promise.reject(
+          new Error("No hay token de autenticación")
+        );
       }
+
+      const cfg: any = config;
+      cfg.headers = cfg.headers || {};
+      cfg.headers.Authorization = `Bearer ${token}`;
 
       // si la request se manda, contamos como actividad del usuario
       touchActivity();
@@ -198,25 +197,36 @@ export const setupAuthInterceptors = (api: AxiosInstance) => {
     async (error: AxiosError<any>) => {
       const originalConfig: any = error.config;
 
-      // Si no hay respuesta (error de red, CORS, etc.), no hacemos nada especial
+      // Si no hay respuesta (error de red, CORS, etc.)
       if (!error.response) {
         return Promise.reject(error);
       }
 
-      // Solo intentamos refrescar una vez por request
-      if (error.response.status === 401 && !originalConfig._retry) {
+      const status = error.response.status;
+
+      // Solo manejamos 401 de forma especial
+      if (status === 401) {
+        // Si ya reintentamos una vez, o la request es al endpoint de refresh,
+        // entonces cerramos sesión sí o sí.
+        if (originalConfig._retry || originalConfig.url?.includes("api/auth/token/refresh/")) {
+          clearAuth();
+          window.location.href = "/signin";
+          return Promise.reject(error);
+        }
+
+        // Marcamos que ya intentamos una vez
         originalConfig._retry = true;
 
         const refresh = getRefreshToken();
         if (!refresh) {
-          // No hay refresh: cerramos sesión y redirigimos a login
+          // No hay refresh: logout inmediato
           clearAuth();
           window.location.href = "/signin";
           return Promise.reject(error);
         }
 
         try {
-          // Pedimos nuevo access token
+          // Intentamos refrescar token
           const data = await refreshToken({ refresh });
 
           // Guardamos el nuevo access
@@ -228,14 +238,14 @@ export const setupAuthInterceptors = (api: AxiosInstance) => {
 
           return api(originalConfig);
         } catch (refreshErr) {
-          // El refresh falló (también expiró o es inválido) -> logout forzado
+          // El refresh falló -> logout forzado
           clearAuth();
           window.location.href = "/signin";
           return Promise.reject(refreshErr);
         }
       }
 
-      // Si no es 401, o ya reintentamos, devolvemos el error normal
+      // Si no es 401 devolvemos el error normal
       return Promise.reject(error);
     }
   );

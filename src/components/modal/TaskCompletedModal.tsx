@@ -4,7 +4,7 @@ import { Modal } from "../ui/modal";
 import {
   getTasksCompletedByVisitPaged,
   createTaskCompleted,
-  updateTaskCompleted,   
+  updateTaskCompleted,
   deleteTaskCompleted,
   toggleCompleted,
   type TaskCompleted,
@@ -26,7 +26,6 @@ type FormValues = {
   plan_task?: number | null;
   name: string;
   description?: string;
-  hours?: number | string;
   completada?: boolean;
 };
 
@@ -34,7 +33,6 @@ const emptyForm: FormValues = {
   plan_task: undefined,
   name: "",
   description: "",
-  hours: "",
   completada: true,
 };
 
@@ -81,11 +79,14 @@ export default function TasksCompletedModal({
     setError(null);
     try {
       // Orden: pendientes primero, luego por nombre asc
-      const data: PageResp<TaskCompleted> = await getTasksCompletedByVisitPaged(visitId, {
-        page,
-        page_size: pageSize,
-        ordering: "completada,name", // DRF: False antes que True en asc
-      });
+      const data: PageResp<TaskCompleted> = await getTasksCompletedByVisitPaged(
+        visitId,
+        {
+          page,
+          page_size: pageSize,
+          ordering: "completada,name", // DRF: False antes que True en asc
+        }
+      );
       setRows(data.results ?? []);
       setCount(data.count ?? 0);
     } catch (e: any) {
@@ -123,7 +124,6 @@ export default function TasksCompletedModal({
       plan_task: t.plan_task ?? null,
       name: t.name,
       description: t.description ?? "",
-      hours: typeof t.hours === "number" ? t.hours : "",
       completada: t.completada,
     });
     setFormOpen(true);
@@ -146,19 +146,12 @@ export default function TasksCompletedModal({
     const planTaskVal =
       form.plan_task === undefined ? null : (form.plan_task || null);
 
-    // Normaliza hours
-    const hoursVal =
-      form.hours === "" || form.hours === undefined
-        ? undefined
-        : Number(form.hours);
-
-    // payload común creación
+    // payload común creación (sin hours, para que el backend use default=0)
     const payloadFull: CreateTaskCompletedDTO = {
       visit: visitId,
       plan_task: planTaskVal,
       name,
       description: form.description?.trim() || undefined,
-      hours: Number.isFinite(hoursVal as number) ? (hoursVal as number) : undefined,
       completada: form.completada ?? true,
     };
 
@@ -166,15 +159,13 @@ export default function TasksCompletedModal({
       setSaving(true);
       if (form.id) {
         // ===== EDITAR =====
-        // Si tu update es PUT (reemplazo completo), mandamos también visit.
         await updateTaskCompleted(form.id, {
-          visit: visitId, // <<--- CLAVE: incluir visit al editar
+          visit: visitId, // incluir visit al editar
           plan_task: planTaskVal,
           name,
           description: form.description?.trim() || undefined,
-          hours: Number.isFinite(hoursVal as number) ? (hoursVal as number) : undefined,
           completada: form.completada ?? true,
-        } as any); // si tu tipo de update es Partial, este cast evita error de TS
+        } as any); // cast para tipos parciales
       } else {
         // ===== CREAR =====
         await createTaskCompleted(payloadFull);
@@ -245,7 +236,11 @@ export default function TasksCompletedModal({
   if (!isOpen) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-[820px] p-6 lg:p-10">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      className="max-w-[820px] p-6 lg:p-10"
+    >
       <div className="flex flex-col px-2 overflow-y-auto custom-scrollbar">
         {/* ---------- Header ---------- */}
         <div>
@@ -291,7 +286,7 @@ export default function TasksCompletedModal({
                   {Array.from({ length: 5 }).map((_, i) => (
                     <div
                       key={i}
-                      className="h-11 rounded-lg bg-gray-100 dark:bg-white/10 animate-pulse"
+                      className="h-11 rounded-lg bg-gray-100 dark:bg:white/10 animate-pulse"
                     />
                   ))}
                 </div>
@@ -328,7 +323,9 @@ export default function TasksCompletedModal({
                               <div className="mt-0.5 text-xs text-gray-500">
                                 (plan_task #{t.plan_task}
                                 {planTasksMap.get(t.plan_task)
-                                  ? ` · ${planTasksMap.get(t.plan_task)!.name}`
+                                  ? ` · ${
+                                      planTasksMap.get(t.plan_task)!.name
+                                    }`
                                   : ""}
                                 )
                               </div>
@@ -341,9 +338,28 @@ export default function TasksCompletedModal({
                             )}
 
                             <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-500">
-                              {typeof t.hours === "number" ? <span>Horas: {t.hours}</span> : null}
-                              {t.created_at ? <span>Creada: {new Date(t.created_at).toLocaleString()}</span> : null}
-                              {t.updated_at ? <span>Actualizada: {new Date(t.updated_at).toLocaleString()}</span> : null}
+                              {/* Si quieres seguir mostrando horas como solo lectura, 
+                                  puedes descomentar esto:
+                                  {typeof t.hours === "number" ? (
+                                    <span>Horas: {t.hours}</span>
+                                  ) : null}
+                              */}
+                              {t.created_at ? (
+                                <span>
+                                  Creada:{" "}
+                                  {new Date(
+                                    t.created_at
+                                  ).toLocaleString()}
+                                </span>
+                              ) : null}
+                              {t.updated_at ? (
+                                <span>
+                                  Actualizada:{" "}
+                                  {new Date(
+                                    t.updated_at
+                                  ).toLocaleString()}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
 
@@ -352,13 +368,17 @@ export default function TasksCompletedModal({
                               onClick={() => void handleToggleCompleted(t)}
                               disabled={actingId === t.id}
                               className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
-                              title={t.completada ? "Marcar como pendiente" : "Marcar como completada"}
+                              title={
+                                t.completada
+                                  ? "Marcar como pendiente"
+                                  : "Marcar como completada"
+                              }
                             >
                               {t.completada ? "Desmarcar" : "Completar"}
                             </button>
                             <button
                               onClick={() => openEdit(t)}
-                              className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/[0.06]"
+                              className="rounded-lg border px-3 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-700 dark:hover:bg:white/[0.06]"
                             >
                               Editar
                             </button>
@@ -388,7 +408,9 @@ export default function TasksCompletedModal({
                         ← Anterior
                       </button>
                       <button
-                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        onClick={() =>
+                          setPage((p) => Math.min(totalPages, p + 1))
+                        }
                         disabled={page >= totalPages || loading}
                         className="rounded-lg border px-3 py-1.5 text-xs disabled:opacity-50 dark:border-gray-700"
                       >
@@ -405,7 +427,9 @@ export default function TasksCompletedModal({
                         title="Filas por página"
                       >
                         {[5, 10, 15, 20].map((n) => (
-                          <option key={n} value={n}>{n}/pág</option>
+                          <option key={n} value={n}>
+                            {n}/pág
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -429,7 +453,8 @@ export default function TasksCompletedModal({
                   onChange={(e) =>
                     setForm((f) => ({
                       ...f,
-                      plan_task: e.target.value === "" ? null : Number(e.target.value),
+                      plan_task:
+                        e.target.value === "" ? null : Number(e.target.value),
                     }))
                   }
                 >
@@ -455,7 +480,9 @@ export default function TasksCompletedModal({
                 <input
                   type="text"
                   value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, name: e.target.value }))
+                  }
                   className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
                   placeholder="Mantenimiento de cómputo"
                 />
@@ -468,25 +495,12 @@ export default function TasksCompletedModal({
                 </label>
                 <textarea
                   value={form.description ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, description: e.target.value }))
+                  }
                   rows={4}
                   className="dark:bg-dark-900 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
                   placeholder="Detalle de la tarea realizada…"
-                />
-              </div>
-
-              {/* Horas */}
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                  Horas
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={form.hours ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, hours: e.target.value }))}
-                  className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
-                  placeholder="0"
                 />
               </div>
 
@@ -496,7 +510,12 @@ export default function TasksCompletedModal({
                   <input
                     type="checkbox"
                     checked={!!form.completada}
-                    onChange={(e) => setForm((f) => ({ ...f, completada: e.target.checked }))}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        completada: e.target.checked,
+                      }))
+                    }
                   />
                   Completada
                 </label>
@@ -533,7 +552,11 @@ export default function TasksCompletedModal({
                 disabled={saving || !visitId}
                 className="flex w-full justify-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60 sm:w-auto"
               >
-                {saving ? "Guardando..." : form.id ? "Actualizar tarea" : "Guardar tarea"}
+                {saving
+                  ? "Guardando..."
+                  : form.id
+                  ? "Actualizar tarea"
+                  : "Guardar tarea"}
               </button>
             </>
           )}
