@@ -22,7 +22,7 @@ import {
 } from "../../api/customer/customer.api";
 import CustomerContactsModal from "../modal/modalCustomerContact";
 
-// 👇 IMPORTANTE: usamos el rol del usuario
+// usamos el rol del usuario
 import { useAuth } from "../../auth/AuthContext";
 
 export default function CustomersTable() {
@@ -39,7 +39,7 @@ export default function CustomersTable() {
     page_size: 25,
   });
 
-  // 👇 rol actual (admin / technician)
+  // 👇 rol (admin / technician)
   const { role } = useAuth();
   const isAdmin = role === "admin";
 
@@ -52,7 +52,7 @@ export default function CustomersTable() {
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
 
-  // Modal contactos (solo control de apertura y cliente)
+  // Modal contactos 
   const [contactsOpen, setContactsOpen] = useState(false);
   const [contactsCustomer, setContactsCustomer] = useState<Customer | null>(null);
 
@@ -73,20 +73,21 @@ export default function CustomersTable() {
     setSelected(row);
     setEditOpen(true);
   };
+
   const closeEdit = () => {
     setSelected(null);
     setEditOpen(false);
   };
 
   const askDelete = (id: number) => {
-    // 🔒 Seguridad extra: si no es admin, no hace nada
+    // si no es admin, no hace nada
     if (!isAdmin) return;
     setPendingId(id);
     setConfirmOpen(true);
   };
 
   const onDelete = async (id: number) => {
-    // 🔒 Seguridad extra: evitar borrar si no es admin
+    // evitar borrar si no es admin
     if (!isAdmin) {
       alert("No tienes permisos para eliminar clientes.");
       return;
@@ -260,7 +261,7 @@ export default function CustomersTable() {
                           Editar
                         </button>
 
-                        {/* 🔒 Botón Eliminar SOLO para admins */}
+                        {/*Eliminar SOLO para admins */}
                         {isAdmin && (
                           <button
                             onClick={() => askDelete(c.id)}

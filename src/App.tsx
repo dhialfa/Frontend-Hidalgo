@@ -8,7 +8,6 @@ import {
   useNavigate,
 } from "react-router";
 import { Toaster } from "sonner";
-
 import SignIn from "./pages/AuthPages/SignIn";
 import NotFound from "./pages/OtherPage/NotFound";
 import Calendar from "./pages/Visits/Calendar";
@@ -100,7 +99,7 @@ export default function App() {
               <Route path="/visit" element={<VisitsPage />} />
             </Route>
           </Route>
-
+          
           {/* Fallback */}
           <Route path="*" element={<NotFound />} />
         </Routes>

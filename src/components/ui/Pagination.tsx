@@ -144,9 +144,6 @@ export default function Pagination({
               </option>
             ))}
           </select>
-          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 dark:text-gray-500">
-            ▼
-          </span>
         </div>
 
         <span className="hidden text-gray-500 sm:inline dark:text-gray-400">

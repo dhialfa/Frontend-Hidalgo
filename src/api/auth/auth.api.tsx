@@ -65,7 +65,7 @@ export const refreshToken = async (data: RefreshDTO) => {
 
 export const forgotPassword = async (data: ForgotPasswordDTO) => {
   const res = await AuthApi.post<{ detail: string }>(
-    "api/core/forgot-password/",
+    "api/auth/forgot-password/",
     data
   );
   return res.data;
@@ -73,7 +73,7 @@ export const forgotPassword = async (data: ForgotPasswordDTO) => {
 
 export const resetPassword = async (data: ResetPasswordDTO) => {
   const res = await AuthApi.post<{ detail: string }>(
-    "api/core/reset-password/",
+    "api/auth/reset-password/",
     data
   );
   return res.data;
@@ -131,11 +131,6 @@ export const getCurrentUser = (): User | null => {
   }
 };
 
-/**
- * Devuelve true solo si:
- *  - hay access token
- *  - y NO ha vencido el tiempo de inactividad
- */
 export const isAuthenticated = (): boolean => {
   const token = getAccessToken();
   if (!token) {

@@ -10,11 +10,11 @@ import {
 import Badge from "../ui/badge/Badge";
 import { Modal } from "../ui/modal";
 import UserModal, { UserFormValues } from "../modal/modalUsers";
-import Pagination from "../ui/Pagination";                  // ⬅️ componente de paginación
-import { usePager } from "../../hooks/usePager";            // ⬅️ hook de paginación
+import Pagination from "../ui/Pagination";                  
+import { usePager } from "../../hooks/usePager";            
 
 import {
-  getUsers,              // ⬅️ listado paginado: {count, results, next, previous}
+  getUsers,         
   createUser,
   updateUser,
   deleteUser,
@@ -61,7 +61,6 @@ export default function UsersTable() {
   // -------- Handlers CRUD ----------
   const onCreateSubmit = async (values: UserFormValues) => {
     await createUser(values);
-    // tras crear, vuelve a la página 1 para ver el registro más reciente si tu backend lo ordena así
     setPage(1);
     await reload();
   };

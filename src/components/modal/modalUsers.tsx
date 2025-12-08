@@ -10,8 +10,8 @@ export type UserFormValues = {
   first_name?: string;
   last_name?: string;
   phone?: string;
-  is_active: boolean; // se maneja interno, no en UI
-  is_staff: boolean; // admin
+  is_active: boolean;
+  is_staff: boolean;
 };
 
 type Props = {
@@ -32,52 +32,31 @@ export default function UserModal({
   submitLabel = "Guardar usuario",
 }: Props) {
   const isEdit = initial?.id != null;
-
   const [saving, setSaving] = useState(false);
-
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
-
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
-
-  // 👇 Estado interno para is_active (no se muestra)
   const [isActive, setIsActive] = useState(true);
-
-  // 👇 Estado del checkbox admin
   const [isStaff, setIsStaff] = useState(false);
-
   const [showPassword, setShowPassword] = useState(false);
-
   const [changePassword, setChangePassword] = useState(!isEdit);
   const [password, setPassword] = useState("");
-
-  // 👉 Rol del usuario logueado
   const { role } = useAuth();
   const isCurrentAdmin = role === "admin";
-
-  // 👇 Errores devueltos por el backend (y opcionalmente del cliente)
   const [errors, setErrors] = useState<string[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
-
     setUsername(initial?.username ?? "");
     setEmail(initial?.email ?? "");
-
     setFirstName(initial?.first_name ?? "");
     setLastName(initial?.last_name ?? "");
     setPhone(initial?.phone ?? "");
-
-    // Cargar estado (aunque no se edite en UI)
     setIsActive(initial?.is_active ?? true);
-
-    // Cargar admin del usuario que se está editando
     setIsStaff(initial?.is_staff ?? false);
-
     setShowPassword(false);
-
     if (isEdit) {
       setChangePassword(false);
       setPassword("");
@@ -85,8 +64,6 @@ export default function UserModal({
       setChangePassword(true);
       setPassword("");
     }
-
-    // Limpiar errores al abrir
     setErrors([]);
   }, [isOpen, initial, isEdit]);
 
@@ -95,13 +72,15 @@ export default function UserModal({
   };
 
   const handleSubmit = async () => {
-    // Limpia errores anteriores
     setErrors([]);
-
-    // Validaciones de frontend rápidas
     const localErrors: string[] = [];
+
     if (!username.trim()) localErrors.push("El username es obligatorio.");
     if (!email.trim()) localErrors.push("El email es obligatorio.");
+    const cleanPhone = phone.replace(/\D/g, ""); 
+    if (cleanPhone && cleanPhone.length !== 8) {
+      localErrors.push("El teléfono debe tener exactamente 8 dígitos.");
+    }
     if (!isEdit && !password.trim())
       localErrors.push("La contraseña es obligatoria.");
     if (isEdit && changePassword && !password.trim()) {
@@ -109,13 +88,11 @@ export default function UserModal({
         "Escribe la nueva contraseña o desmarca 'Cambiar contraseña'."
       );
     }
-
     if (localErrors.length > 0) {
       setErrors(localErrors);
       return;
     }
 
-    // 👇 Si el usuario logueado NO es admin, no puede cambiar is_staff
     const originalIsStaff = initial?.is_staff ?? false;
     const finalIsStaff = isCurrentAdmin ? isStaff : originalIsStaff;
 
@@ -124,8 +101,8 @@ export default function UserModal({
       email: email.trim(),
       first_name: firstName.trim() || undefined,
       last_name: lastName.trim() || undefined,
-      phone: phone.trim() || undefined,
-      is_active: isActive, // se envía, pero no se edita en UI
+      phone: cleanPhone || undefined,
+      is_active: isActive, 
       is_staff: finalIsStaff,
       ...(changePassword && password.trim()
         ? { password: password.trim() }
@@ -139,7 +116,6 @@ export default function UserModal({
     } catch (err: any) {
       console.error("Error al guardar usuario:", err);
 
-      // 👇 Parseamos bien los errores del backend (DRF / Django)
       if (axios.isAxiosError(err) && err.response) {
         const data = err.response.data as any;
         const msgs: string[] = [];
@@ -286,6 +262,7 @@ export default function UserModal({
               type="text"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              inputMode="numeric"
               className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-none focus:ring focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
               placeholder="8888-8888"
             />
